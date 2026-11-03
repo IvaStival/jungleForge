@@ -6,7 +6,10 @@ which build/runtime pipeline the Makefile uses — `php` (nginx + php-fpm, the d
 `STACK` is unset), `node` (Vite dev server / built + served in prod), `frankenphp`
 (Symfony or any PHP app served directly by FrankenPHP's bundled Caddy, no nginx/php-fpm split),
 and `rust` (a Rust dev shell — e.g. a Tauri app under active development — dev-only, no prod
-pipeline; see the "Dev-only stacks" note in point 2 below).
+pipeline; see the "Dev-only stacks" note in point 2 below). There is also `external`, an
+escape hatch rather than a stack: the Makefile just points at the project's own
+`docker-compose.yml` (see CLAUDE.md) — reach for it only for one-off setups, and build a real
+stack as described here when the shape would be reused.
 
 This doc walks through what a new stack needs, using `frankenphp` as the worked example for a
 normal dev/prod stack, and `rust` as the worked example for a **dev-only** one.

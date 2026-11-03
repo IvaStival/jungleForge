@@ -125,6 +125,20 @@ just runs `sleep infinity`; you `make sh <project>` into it and run `cargo`/`cli
 - Toolchain baked into the base image: `rustfmt`, `clippy`, `rust-analyzer` (via `rustup
   component add`) plus `cargo-watch`, `cargo-edit`, `cargo-expand` (via `cargo install`).
 
+## External / bring-your-own-Docker projects
+
+`STACK=external` is for a project that already has its own complete, working `Dockerfile` *and*
+`docker-compose.yml` — the Makefile points `COMPOSE_FILE` straight at
+`$(PROJECT_PATH)/docker-compose.yml` and otherwise gets out of the way: no templating, no shared
+base image, no dev/prod split (`env=dev`/`env=prod` resolve to the same file). Unlike every other
+stack, the project's own compose file is the source of truth for everything — ports, volumes,
+build args. Two things the control plane still requires of that compose file: a service named
+`app` (so `make sh`/`make migrate` work unmodified) and an explicit `container_name:` sourced from
+`APP_CONTAINER` in `deploy/.docker-env` (so status detection in the picker/`make info` works).
+Scaffold from `templates/deploy-external/`. Use this only for genuinely bespoke, one-off Docker
+setups — if the same shape would be reused by another project, build a real templated stack
+instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent).
+
 ## Architecture essentials
 
 - **One container per project.** In the `php` stack, nginx serves `public/` and proxies PHP to
@@ -217,6 +231,9 @@ just runs `sleep infinity`; you `make sh <project>` into it and run `cargo`/`cli
 - `templates/deploy-rust/` — drop-in scaffold for a Rust project's `deploy/` (just
   `.docker-env.example` and `dockerignore.example` — no entrypoints, since the container has no
   boot sequence to run).
+- `templates/deploy-external/` — minimal scaffold for a `STACK=external` project's `deploy/` (just
+  `.docker-env.example` documenting the two required vars; everything else depends on what that
+  project's own compose file needs).
 - `defaults/php/` — fallback php.ini / php.dev.ini / opcache.ini / www.conf.
 - `templates/deploy/` — drop-in scaffold copied into a `php`-stack project's `deploy/`
   (entrypoints, nginx vhost, supervisor configs, `.docker-env.example`).

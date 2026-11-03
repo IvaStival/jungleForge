@@ -41,7 +41,9 @@ DEPLOY       := $(PROJECT_PATH)/deploy
 # Stack discriminator: read STACK from the project's .docker-env (php default). Selects which
 # Dockerfile + compose files drive the project — `node` for Vite/Node frontends, `frankenphp`
 # for FrankenPHP-served PHP apps (e.g. Symfony), `rust` for a Rust dev-shell (e.g. a Tauri app
-# under active development — dev-only, no prod pipeline), else PHP/Laravel (nginx + php-fpm).
+# under active development — dev-only, no prod pipeline), `external` for a project that supplies
+# its own complete Dockerfile + docker-compose.yml (no templating at all — see CLAUDE.md), else
+# PHP/Laravel (nginx + php-fpm).
 STACK := $(strip $(shell sed -n 's/^STACK=//p' $(DEPLOY)/.docker-env 2>/dev/null | awk '{print $$1}'))
 STACK := $(or $(STACK),php)
 
@@ -54,6 +56,9 @@ COMPOSE_FILE := docker-compose.frankenphp.$(env).yml
 endif
 ifeq ($(STACK),rust)
 COMPOSE_FILE := docker-compose.rust.$(env).yml
+endif
+ifeq ($(STACK),external)
+COMPOSE_FILE := $(PROJECT_PATH)/docker-compose.yml
 endif
 
 # Migration command: project override (deploy/.docker-env MIGRATE_CMD=...) else a stack default
