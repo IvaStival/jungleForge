@@ -1,6 +1,6 @@
 # Adding a stack
 
-jungleforgebase drives every registered project through one `Makefile`, but a project isn't
+jungleforge drives every registered project through one `Makefile`, but a project isn't
 locked into PHP-with-nginx. The `STACK` variable in a project's `deploy/.docker-env` picks
 which build/runtime pipeline the Makefile uses — `php` (nginx + php-fpm, the default when
 `STACK` is unset), `node` (Vite dev server / built + served in prod), `next` (Next.js: `next
@@ -43,7 +43,7 @@ Dockerfile — only their `deploy/` config). Mirror `build/php.Dockerfile`'s `de
 `build/frankenphp.Dockerfile` is the worked example: it skips the nginx/php-fpm split
 entirely (FrankenPHP bundles its own web server) and its `dev` stage is a thin layer on top of
 the official `dunglas/frankenphp` image, exactly like `build/php.Dockerfile`'s `dev` stage layers
-on top of jungleforgebase's own prebuilt `jungleforge/php:<v>-dev` base.
+on top of jungleforge's own prebuilt `jungleforge/php:<v>-dev` base.
 
 ### 2. `docker-compose.<stack>.{dev,prod}.yml`
 

@@ -1,4 +1,4 @@
-# Shared Rust base image for jungleforgebase Rust dev-shell projects (e.g. a Tauri app under
+# Shared Rust base image for jungleforge Rust dev-shell projects (e.g. a Tauri app under
 # active development). Dev-only — unlike base/php.Dockerfile and base/node.Dockerfile there is no
 # prod target: this stack is for local development tooling, not something this control plane
 # deploys.

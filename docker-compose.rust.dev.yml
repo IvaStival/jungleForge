@@ -12,7 +12,7 @@ services:
   app:
     build:
       context: ${PROJECT_PATH}
-      dockerfile: ${APP_DOCKERFILE}     # jungleforgebase's build/rust.Dockerfile (outside the context)
+      dockerfile: ${APP_DOCKERFILE}     # jungleforge's build/rust.Dockerfile (outside the context)
       target: dev
       args:
         RUST_VERSION: ${RUST_VERSION:-1}

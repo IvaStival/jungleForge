@@ -1,4 +1,4 @@
-# jungleforgebase
+# JungleForge
 
 A small **Docker control plane** for running many backend + frontend projects from one place —
 PHP/Laravel, FrankenPHP (e.g. Symfony), and Node/Vite — sharing one MariaDB + Postgres + Redis + RabbitMQ + MinIO
@@ -17,7 +17,7 @@ projects, and pull engine updates whenever you want — see
 ## Quickstart
 
 ```bash
-git clone <your-fork-url> jungleforgebase && cd jungleforgebase
+git clone <your-fork-url> jungleforge && cd jungleforge
 cp .env.example .env
 make base                                              # build the shared PHP base image (once)
 make up group=services                                 # picker: mariadb + postgres + redis + rabbitmq + minio —
@@ -38,7 +38,7 @@ it for your own: register your project's path in `.env`, scaffold its `deploy/` 
 
 ```
                         ┌───────────────────────────────────────────────┐
-make <cmd> <project>    │ jungleforgebase (this repo) — control plane   │
+make <cmd> <project>    │ jungleforge (this repo) — control plane       │
 ───────────────────────▶│                                               │
                         │ .env        project registry + credentials    │
                         │ Makefile    resolves paths, runs compose      │
@@ -73,7 +73,7 @@ make <cmd> <project>    │ jungleforgebase (this repo) — control plane   │
   `8080`/`5173` — except `frankenphp` projects, which keep a fixed port set in their own
   hand-owned Caddyfile), and reaches MariaDB/Postgres/Redis/RabbitMQ/MinIO at their hostnames. Only each
   project's **host** port (`APP_HTTP_PORT`) needs to be unique.
-- **A project carries no Dockerfile of its own** — it builds from jungleforgebase's shared
+- **A project carries no Dockerfile of its own** — it builds from jungleforge's shared
   `build/<stack>.Dockerfile`. Its `deploy/` folder (scaffolded from `templates/deploy*/`) is
   just config: web server vhost/Caddyfile, supervisor, entrypoints, `.docker-env`.
 - **`make base`/`make base-node` build the shared PHP/Node images once** (`force=true` rebuilds
@@ -89,10 +89,10 @@ For the full breakdown of build stages, config resolution, and how to add a new 
 
 ## Consuming this repo
 
-jungleforgebase is a **living upstream**, not a template you copy once. Fork it, then:
+jungleforge is a **living upstream**, not a template you copy once. Fork it, then:
 
 ```bash
-git remote add upstream https://github.com/<original-owner>/jungleforgebase.git
+git remote add upstream https://github.com/<original-owner>/jungleForge.git
 git pull upstream main    # whenever you want engine updates
 ```
 
@@ -129,7 +129,7 @@ Register a project by adding its absolute path to `.env` (name uppercased, dashe
 
 ```dotenv
 YOUR_APP_PATH=/Users/you/Projects/your-app
-DEMO_API_PATH=/Users/you/Projects/jungleforgebase/examples/demo-api
+DEMO_API_PATH=/Users/you/Projects/jungleforge/examples/demo-api
 ```
 
 Each project's host port is set in its own `deploy/.docker-env` (`APP_HTTP_PORT`) — give each a
@@ -144,7 +144,7 @@ cp /path/to/your-app/deploy/.docker-env.example /path/to/your-app/deploy/.docker
 # edit deploy/.docker-env: IMAGE_NAME, PHP_CONTAINER, PHP_VERSION, APP_HTTP_PORT (distinct per project)
 ```
 
-Then register the project's path in jungleforgebase's `.env` (`YOUR_APP_PATH=...`).
+Then register the project's path in jungleforge's `.env` (`YOUR_APP_PATH=...`).
 
 ### 3. Day-to-day (dev is the default `env`)
 
