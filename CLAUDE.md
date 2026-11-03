@@ -183,6 +183,9 @@ instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent)
   `services`/`postgres`/`redis`/`rabbitmq`/`minio`. Only needs setting if running more than one instance
   of this control plane on the same host, and include your own trailing separator when you do
   (e.g. `SERVICES_PREFIX=myinstance-`).
+- **Extra Alpine packages per project:** list package names in `deploy/runtime-apk-packages`
+  (whitespace-separated, e.g. `ffmpeg poppler-utils`) and `build/php.Dockerfile` installs them in
+  both the `dev` and prod (`php-base`) stages. Missing or empty file = no-op; rebuild to apply.
 - **Config resolution (in the Makefile):** for each of `php.ini`, `php.dev.ini`, `opcache.ini`,
   `www.conf` → use the project's `deploy/php/<file>` if present, else `defaults/php/<file>`. These
   are *mounted* (not baked) so they're editable without a rebuild. The php-stack nginx vhost and

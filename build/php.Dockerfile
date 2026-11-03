@@ -17,6 +17,12 @@ ARG PHP_VERSION=8.4
 # Requires the base built once: `make base`. jungleforge/php:<v>-dev already has php + extensions
 # + nginx + supervisor + xdebug + composer/node + zsh. Code is volume-mounted at runtime.
 FROM jungleforge/php:${PHP_VERSION}-dev AS dev
+# Optional per-project runtime packages: one or more Alpine package names in
+# deploy/runtime-apk-packages (e.g. `ffmpeg poppler-utils`). Missing/empty file = no-op.
+RUN --mount=type=bind,source=deploy,target=/tmp/project-deploy,ro \
+    if [ -s /tmp/project-deploy/runtime-apk-packages ]; then \
+        apk add --no-cache $(cat /tmp/project-deploy/runtime-apk-packages); \
+    fi
 COPY deploy/supervisor/supervisord.dev.conf /etc/supervisor/supervisord.conf
 COPY deploy/nginx/default.conf.template /etc/nginx/http.d/default.conf.template
 COPY deploy/entrypoint.dev.sh /usr/local/bin/entrypoint
@@ -83,6 +89,12 @@ RUN apk add --no-cache \
     && apk del .build-deps \
     && sed -i 's/^user .*/user www-data;/' /etc/nginx/nginx.conf \
     && rm -rf /tmp/* /var/cache/apk/*
+# Optional per-project runtime packages: one or more Alpine package names in
+# deploy/runtime-apk-packages (e.g. `ffmpeg poppler-utils`). Missing/empty file = no-op.
+RUN --mount=type=bind,source=deploy,target=/tmp/project-deploy,ro \
+    if [ -s /tmp/project-deploy/runtime-apk-packages ]; then \
+        apk add --no-cache $(cat /tmp/project-deploy/runtime-apk-packages); \
+    fi
 
 # ---------- prod runtime (baked code + assets, nginx + php-fpm under supervisord) ----------
 FROM php-base AS app
