@@ -3,7 +3,8 @@
 jungleforgebase drives every registered project through one `Makefile`, but a project isn't
 locked into PHP-with-nginx. The `STACK` variable in a project's `deploy/.docker-env` picks
 which build/runtime pipeline the Makefile uses — `php` (nginx + php-fpm, the default when
-`STACK` is unset), `node` (Vite dev server / built + served in prod), `frankenphp`
+`STACK` is unset), `node` (Vite dev server / built + served in prod), `next` (Next.js: `next
+dev` / standalone server, sharing the Node base), `frankenphp`
 (Symfony or any PHP app served directly by FrankenPHP's bundled Caddy, no nginx/php-fpm split),
 and `rust` (a Rust dev shell — e.g. a Tauri app under active development — dev-only, no prod
 pipeline; see the "Dev-only stacks" note in point 2 below). There is also `external`, an

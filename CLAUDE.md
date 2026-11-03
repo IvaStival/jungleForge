@@ -70,7 +70,7 @@ targets `scripts/pick.sh` calls once it's resolved an exact project from the pic
 
 ## Frontend (Node/Vite) projects
 
-A project's `deploy/.docker-env` picks its stack via `STACK=php|node|frankenphp` — the Makefile
+A project's `deploy/.docker-env` picks its stack via `STACK=php|node|next|frankenphp|rust|external` — the Makefile
 reads it and auto-selects the Dockerfile + compose files, so `make build|up|down <project>` is
 identical across stacks. `STACK` unset ⇒ `php`.
 
@@ -90,6 +90,25 @@ identical across stacks. `STACK` unset ⇒ `php`.
   proxy target in dev and the inlined origin in prod — the backend's in-container port matches
   its own `APP_HTTP_PORT`, not a fixed `8080`, unless it's a `frankenphp` backend, see below).
 - `make migrate` is PHP-only (artisan) and does not apply to Node projects.
+
+## Next.js projects
+
+`STACK=next` is for server-rendered Next.js frontends, distinct from the Vite-oriented `node`
+stack. It selects `build/next.Dockerfile` and `docker-compose.next.{dev,prod}.yml`.
+
+- **Base image:** reuses the same Node base built by `make base-node` (`ensure-base` treats
+  `node|next` alike).
+- **Register a frontend:** add `<NAME>_PATH=/abs/path` to `.env`, scaffold its `deploy/` from
+  `templates/deploy-next/` (copy `dockerignore.example` to the project root as `.dockerignore`),
+  and set `STACK=next` plus `NODE_VERSION`, `IMAGE_NAME`, `APP_CONTAINER`, `VITE_PORT`,
+  `APP_HTTP_PORT` and `NEXT_PUBLIC_API_URL` in `deploy/.docker-env`.
+- **Dev:** `next dev` (Fast Refresh) under supervisord on `VITE_PORT`; source is mounted and
+  `node_modules` is installed on first start onto an anonymous volume.
+- **Prod:** `next build` produces standalone output (the project's `next.config` must set
+  `output: 'standalone'`); `node server.js` runs under supervisord, loopback-only on
+  `APP_HTTP_PORT`. `NEXT_PUBLIC_*` values are read from `deploy/.docker-env` through a BuildKit
+  secret at image-build time, so they are inlined without becoming build args. The public API URL
+  must be reachable by browsers — never a Docker-only hostname.
 
 ## FrankenPHP projects
 
@@ -214,6 +233,12 @@ instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent)
 - `base/node.Dockerfile` — prebuilt Node base (`prod` + `dev` targets); built by `make base-node`.
 - `docker-compose.node.{dev,prod}.yml` — per-project dev/prod for Node projects (selected when
   `STACK=node`).
+- `build/next.Dockerfile` — the Next.js counterpart. Stages: `dev` (thin, runs `next dev`),
+  `deps`, `build` (Next standalone output), `app` (standalone server + static assets).
+- `docker-compose.next.{dev,prod}.yml` — per-project dev/prod for Next.js projects (selected when
+  `STACK=next`).
+- `templates/deploy-next/` — drop-in scaffold for a Next.js project's `deploy/` (entrypoints,
+  supervisor configs, `.docker-env.example`, `dockerignore.example`).
 - `build/frankenphp.Dockerfile` — the FrankenPHP counterpart. Stages: `dev` (thin, FROM the
   official `dunglas/frankenphp` image), `vendor` (composer, prod only), `app` (prod runtime).
 - `docker-compose.frankenphp.{dev,prod}.yml` — per-project dev/prod for FrankenPHP projects.

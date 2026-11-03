@@ -39,8 +39,8 @@ PROJECT_PATH := $($(PREFIX)_PATH)
 DEPLOY       := $(PROJECT_PATH)/deploy
 
 # Stack discriminator: read STACK from the project's .docker-env (php default). Selects which
-# Dockerfile + compose files drive the project — `node` for Vite/Node frontends, `frankenphp`
-# for FrankenPHP-served PHP apps (e.g. Symfony), `rust` for a Rust dev-shell (e.g. a Tauri app
+# Dockerfile + compose files drive the project — `node` for Vite SPAs, `next` for Next.js
+# frontends, `frankenphp` for FrankenPHP-served PHP apps (e.g. Symfony), `rust` for a Rust dev-shell (e.g. a Tauri app
 # under active development — dev-only, no prod pipeline), `external` for a project that supplies
 # its own complete Dockerfile + docker-compose.yml (no templating at all — see CLAUDE.md), else
 # PHP/Laravel (nginx + php-fpm).
@@ -50,6 +50,9 @@ STACK := $(or $(STACK),php)
 COMPOSE_FILE := docker-compose.$(env).yml
 ifeq ($(STACK),node)
 COMPOSE_FILE := docker-compose.node.$(env).yml
+endif
+ifeq ($(STACK),next)
+COMPOSE_FILE := docker-compose.next.$(env).yml
 endif
 ifeq ($(STACK),frankenphp)
 COMPOSE_FILE := docker-compose.frankenphp.$(env).yml
@@ -109,12 +112,15 @@ RUST_BASE_VERSION := $(or $(word 2,$(MAKECMDGOALS)),1)
 # The host-published port (APP_HTTP_PORT) is set per project in its own deploy/.docker-env.
 export APP_HOST := $(PROJECT)
 
-# THE one common project Dockerfile (php), or its Node/FrankenPHP/Rust counterpart, chosen by
+# THE one common project Dockerfile (php), or its Node/Next/FrankenPHP/Rust counterpart, chosen by
 # STACK. compose points build.dockerfile here (outside the project build context) so projects
 # don't each carry their own — they keep only their deploy/ config.
 APP_DOCKERFILE := $(CURDIR)/build/php.Dockerfile
 ifeq ($(STACK),node)
 APP_DOCKERFILE := $(CURDIR)/build/node.Dockerfile
+endif
+ifeq ($(STACK),next)
+APP_DOCKERFILE := $(CURDIR)/build/next.Dockerfile
 endif
 ifeq ($(STACK),frankenphp)
 APP_DOCKERFILE := $(CURDIR)/build/frankenphp.Dockerfile
@@ -149,7 +155,7 @@ help:
 	@echo "    make base-php                               build jungleforge/php:8.4-{fpm,dev} directly"
 	@echo "    make base-php 8.3                           build for a specific PHP version"
 	@echo "    make base-php force=true                    rebuild without cache"
-	@echo "    make base-node                              build jungleforge/node:20-{prod,dev} directly (Vite/Node projects)"
+	@echo "    make base-node                              build jungleforge/node:20-{prod,dev} directly (Vite/Next.js projects)"
 	@echo "    make base-node 22                           build for a specific Node version"
 	@echo "    make base-node force=true                   rebuild without cache"
 	@echo "    make base-rust                              build jungleforge/rust:1-dev directly (Rust dev-shell projects)"
@@ -172,7 +178,7 @@ help:
 	@echo ""
 	@echo "  Per-project, unaffected by the picker (env=dev default; env=prod for production):"
 	@echo "    make restart|logs|sh|ps|migrate <project> [env=prod]"
-	@echo "    (php/node/frankenphp/rust is auto-selected from the project's .docker-env STACK;"
+	@echo "    (php/node/next/frankenphp/rust is auto-selected from the project's .docker-env STACK;"
 	@echo "     migrate runs a stack default, or MIGRATE_CMD from .docker-env if set;"
 	@echo "     STACK=rust is dev-only — no prod pipeline, no migrate)"
 	@echo ""
@@ -246,7 +252,7 @@ ensure-base:
 	       echo ">> jungleforge/php:$(PROJECT_PHP_VERSION)-dev not built yet — building it first (make base-php $(PROJECT_PHP_VERSION))"; \
 	       $(MAKE) --no-print-directory base-php BASE_VERSION=$(PROJECT_PHP_VERSION); \
 	     fi ;; \
-	   node) \
+	   node|next) \
 	     if ! docker image inspect jungleforge/node:$(PROJECT_NODE_VERSION)-dev >/dev/null 2>&1; then \
 	       echo ">> jungleforge/node:$(PROJECT_NODE_VERSION)-dev not built yet — building it first (make base-node $(PROJECT_NODE_VERSION))"; \
 	       $(MAKE) --no-print-directory base-node NODE_BASE_VERSION=$(PROJECT_NODE_VERSION); \

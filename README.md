@@ -30,7 +30,7 @@ curl localhost:8090/                                   # → confirms the whole 
 `examples/demo-api` is a minimal Laravel app with its own `deploy/`, included so you can prove
 the control plane works end-to-end before registering your own project. Once it's running, swap
 it for your own: register your project's path in `.env`, scaffold its `deploy/` from
-`templates/deploy/` (or `-node`/`-frankenphp`), and `make up <your-project>`.
+`templates/deploy/` (or `-node`/`-next`/`-frankenphp`), and `make up <your-project>`.
 
 ---
 
@@ -65,7 +65,7 @@ make <cmd> <project>    │ jungleforgebase (this repo) — control plane   │
 
 - **Each project runs as one container.** A `php`-stack project runs nginx + php-fpm + Laravel
   Horizon + the scheduler under `supervisord`; `frankenphp` runs a single FrankenPHP process
-  (Caddy + PHP); `node` runs Vite. Pick the stack with `STACK=` in the project's
+  (Caddy + PHP); `node` runs Vite; `next` runs Next.js (`next dev` / standalone server). Pick the stack with `STACK=` in the project's
   `deploy/.docker-env` (`php` is the default).
 - **Every project shares the `lion-network`** (name configurable via `NETWORK_NAME` in `.env`,
   default `lion-network`) and is reachable by other projects at `http://<project>:<that
@@ -139,7 +139,7 @@ project.
 ### 2. Scaffold a project
 
 ```bash
-cp -r templates/deploy /path/to/your-app/deploy        # or templates/deploy-node, templates/deploy-frankenphp
+cp -r templates/deploy /path/to/your-app/deploy        # or templates/deploy-node, -next, -frankenphp
 cp /path/to/your-app/deploy/.docker-env.example /path/to/your-app/deploy/.docker-env
 # edit deploy/.docker-env: IMAGE_NAME, PHP_CONTAINER, PHP_VERSION, APP_HTTP_PORT (distinct per project)
 ```
