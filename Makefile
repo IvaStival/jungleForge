@@ -143,7 +143,7 @@ COMPOSE = docker compose -p $(PROJECT) --env-file $(DEPLOY)/.docker-env -f $(COM
 
 .DEFAULT_GOAL := help
 .PHONY: help guard network ensure-network ensure-base base base-php base-node base-rust prune-old-images services-logs \
-        build up down info _build _up _down restart logs sh ps migrate \
+        build up down info _build _up _down start stop services-start deps restart logs sh ps migrate \
         push pull apply-arch revert-arch
 
 help:
@@ -178,6 +178,11 @@ help:
 	@echo ""
 	@echo "  Per-project, unaffected by the picker (env=dev default; env=prod for production):"
 	@echo "    make restart|logs|sh|ps|migrate <project> [env=prod]"
+	@echo ""
+	@echo "  Non-interactive (scripts/CI; <NAME>_PATH=<folder> runs another checkout, e.g. a worktree):"
+	@echo "    make start|stop <project> [<NAME>_PATH=<folder>]   up -d / down, no picker"
+	@echo "    make deps <project>                         composer/npm install in its running container"
+	@echo "    make services-start                         start the shared services stack"
 	@echo "    (php/node/next/frankenphp/rust is auto-selected from the project's .docker-env STACK;"
 	@echo "     migrate runs a stack default, or MIGRATE_CMD from .docker-env if set;"
 	@echo "     STACK=rust is dev-only — no prod pipeline, no migrate)"
@@ -298,6 +303,25 @@ _up: guard ensure-network ensure-base
 	$(COMPOSE) up -d
 _down: guard
 	$(COMPOSE) down
+
+# Public, non-interactive twins of _up/_down for scripts and CI. Run another checkout of a
+# registered project (e.g. a git worktree) with `make start <project> <NAME>_PATH=<folder>`: a
+# command-line variable beats .env's registry.
+start: guard ensure-network ensure-base
+	$(COMPOSE) up -d
+stop: guard
+	$(COMPOSE) down
+services-start: ensure-network
+	$(SERVICES) up -d
+
+# Installs the project's packages inside its running container, per stack; rust/external
+# manage their own.
+deps: guard
+	@case "$(STACK)" in \
+	   php|frankenphp) $(COMPOSE) exec -T app composer install --no-interaction ;; \
+	   node|next) $(COMPOSE) exec -T app npm install ;; \
+	   *) echo ">> deps: nothing to install for STACK=$(STACK)" ;; \
+	 esac
 restart: guard
 	$(COMPOSE) restart
 logs: guard

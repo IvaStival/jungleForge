@@ -1,5 +1,5 @@
 # Shared backing services for ALL projects — run ONCE:
-#   make services-up      (docker compose -p ${SERVICES_PREFIX}services -f docker-compose.services.yml up -d)
+#   make services-start   (docker compose -p ${SERVICES_PREFIX}services -f docker-compose.services.yml up -d)
 #
 # Projects connect to these by alias (mariadb / postgres / redis / rabbitmq / minio) over lion-network.
 # Credentials and ports come from jungleforge's .env. SERVICES_PREFIX is empty (unprefixed

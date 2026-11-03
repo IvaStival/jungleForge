@@ -241,6 +241,9 @@ collide between instances.
 | `make logs \| ps <p> [env=prod]`         | Logs / status                                               |
 | `make sh <p> [env=prod]`                 | Shell into the `app` container                            |
 | `make migrate <p> [env=prod]`            | Stack-default migration command (`MIGRATE_CMD` overrides)  |
+| `make start \| stop <p> [<NAME>_PATH=<dir>]` | Start (`up -d`) / stop (`down`) with no picker; the path runs another checkout, e.g. a git worktree |
+| `make deps <p>`                          | `composer install` / `npm install` in the running container, per `STACK` |
+| `make services-start`                    | Start the shared services stack, no picker                 |
 | `make push <p> env=prod [arch=armv7]`    | Multi-arch (or armv7) build & push to `REGISTRY`          |
 | `make pull <p> env=prod`                 | Pull the matching-arch image on the target host           |
 | `make apply-arch \| revert-arch arch=armv7` | Apply / revert low-mem tuning to `defaults/php/*`      |
