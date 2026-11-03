@@ -1,0 +1,41 @@
+# Per-project DEV stack for a Rust dev-shell project — ONE container that just runs `sleep
+# infinity`, meant to be `exec`'d into (`make sh <project>`) for cargo/clippy/rust-analyzer work.
+# Driven by the Makefile (selected automatically when the project's .docker-env has STACK=rust):
+#   make up <project>          (dev only — STACK=rust has no prod pipeline)
+#
+# Code is volume-mounted from ${PROJECT_PATH}; the build-artifact dir is excluded via an
+# anonymous volume (mirrors the node stack's /app/node_modules exclusion) so Linux-built binaries
+# don't leak into a host-native (e.g. macOS) target/ directory. The cargo registry lives on a
+# named volume so dependency downloads survive container rebuilds.
+
+services:
+  app:
+    build:
+      context: ${PROJECT_PATH}
+      dockerfile: ${APP_DOCKERFILE}     # jungleforgebase's build/rust.Dockerfile (outside the context)
+      target: dev
+      args:
+        RUST_VERSION: ${RUST_VERSION:-1}
+    image: ${IMAGE_NAME:-app}:dev
+    container_name: ${APP_CONTAINER:-app-rust}
+    restart: unless-stopped
+    volumes:
+      - ${PROJECT_PATH}:/workspace
+      - /workspace/target             # anon volume keeps the container's own build artifacts
+      - cargo-registry:/usr/local/cargo/registry
+    working_dir: /workspace
+    tty: true
+    stdin_open: true
+    command: sleep infinity
+    networks:
+      lion-network:
+        aliases:
+          - ${APP_HOST:-app}
+
+networks:
+  lion-network:
+    external: true
+    name: ${NETWORK_NAME:-lion-network}
+
+volumes:
+  cargo-registry:

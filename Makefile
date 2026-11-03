@@ -40,7 +40,8 @@ DEPLOY       := $(PROJECT_PATH)/deploy
 
 # Stack discriminator: read STACK from the project's .docker-env (php default). Selects which
 # Dockerfile + compose files drive the project — `node` for Vite/Node frontends, `frankenphp`
-# for FrankenPHP-served PHP apps (e.g. Symfony), else PHP/Laravel (nginx + php-fpm).
+# for FrankenPHP-served PHP apps (e.g. Symfony), `rust` for a Rust dev-shell (e.g. a Tauri app
+# under active development — dev-only, no prod pipeline), else PHP/Laravel (nginx + php-fpm).
 STACK := $(strip $(shell sed -n 's/^STACK=//p' $(DEPLOY)/.docker-env 2>/dev/null | awk '{print $$1}'))
 STACK := $(or $(STACK),php)
 
@@ -50,6 +51,9 @@ COMPOSE_FILE := docker-compose.node.$(env).yml
 endif
 ifeq ($(STACK),frankenphp)
 COMPOSE_FILE := docker-compose.frankenphp.$(env).yml
+endif
+ifeq ($(STACK),rust)
+COMPOSE_FILE := docker-compose.rust.$(env).yml
 endif
 
 # Migration command: project override (deploy/.docker-env MIGRATE_CMD=...) else a stack default
@@ -70,6 +74,8 @@ PROJECT_PHP_VERSION  := $(strip $(shell sed -n 's/^PHP_VERSION=//p' $(DEPLOY)/.d
 PROJECT_PHP_VERSION  := $(or $(PROJECT_PHP_VERSION),8.4)
 PROJECT_NODE_VERSION := $(strip $(shell sed -n 's/^NODE_VERSION=//p' $(DEPLOY)/.docker-env 2>/dev/null | awk '{print $$1}'))
 PROJECT_NODE_VERSION := $(or $(PROJECT_NODE_VERSION),20)
+PROJECT_RUST_VERSION := $(strip $(shell sed -n 's/^RUST_VERSION=//p' $(DEPLOY)/.docker-env 2>/dev/null | awk '{print $$1}'))
+PROJECT_RUST_VERSION := $(or $(PROJECT_RUST_VERSION),1)
 
 # php config: project override (deploy/php/<file>) else jungleforge default (defaults/php/<file>)
 PHP_INI     := $(or $(wildcard $(DEPLOY)/php/php.ini),$(CURDIR)/defaults/php/php.ini)
@@ -89,21 +95,27 @@ BASE_VERSION := $(or $(word 2,$(MAKECMDGOALS)),8.4)
 # Shared Node base version: 2nd word on the line, default 20 (`make base-node` | `make base-node 22`).
 NODE_BASE_VERSION := $(or $(word 2,$(MAKECMDGOALS)),20)
 
+# Shared Rust base version: 2nd word on the line, default 1 (`make base-rust` | `make base-rust 1.82`).
+RUST_BASE_VERSION := $(or $(word 2,$(MAKECMDGOALS)),1)
+
 # All projects share the external lion-network; each container gets a DNS alias = its project
 # name, so one project reaches another at http://<project>:8080 (the in-container nginx port —
 # inter-project traffic does NOT use the host-published port). APP_HOST feeds that alias.
 # The host-published port (APP_HTTP_PORT) is set per project in its own deploy/.docker-env.
 export APP_HOST := $(PROJECT)
 
-# THE one common project Dockerfile (php), or its Node/FrankenPHP counterpart, chosen by STACK.
-# compose points build.dockerfile here (outside the project build context) so projects don't
-# each carry their own — they keep only their deploy/ config.
+# THE one common project Dockerfile (php), or its Node/FrankenPHP/Rust counterpart, chosen by
+# STACK. compose points build.dockerfile here (outside the project build context) so projects
+# don't each carry their own — they keep only their deploy/ config.
 APP_DOCKERFILE := $(CURDIR)/build/php.Dockerfile
 ifeq ($(STACK),node)
 APP_DOCKERFILE := $(CURDIR)/build/node.Dockerfile
 endif
 ifeq ($(STACK),frankenphp)
 APP_DOCKERFILE := $(CURDIR)/build/frankenphp.Dockerfile
+endif
+ifeq ($(STACK),rust)
+APP_DOCKERFILE := $(CURDIR)/build/rust.Dockerfile
 endif
 export APP_DOCKERFILE
 
@@ -119,7 +131,7 @@ export PROJECT_PATH PHP_INI PHP_DEV_INI OPCACHE_INI FPM_POOL REGISTRY TARGET_PLA
 COMPOSE = docker compose -p $(PROJECT) --env-file $(DEPLOY)/.docker-env -f $(COMPOSE_FILE)
 
 .DEFAULT_GOAL := help
-.PHONY: help guard network ensure-network ensure-base base base-php base-node services-logs \
+.PHONY: help guard network ensure-network ensure-base base base-php base-node base-rust services-logs \
         build up down info _build _up _down restart logs sh ps migrate \
         push pull apply-arch revert-arch
 
@@ -135,6 +147,9 @@ help:
 	@echo "    make base-node                              build jungleforge/node:20-{prod,dev} directly (Vite/Node projects)"
 	@echo "    make base-node 22                           build for a specific Node version"
 	@echo "    make base-node force=true                   rebuild without cache"
+	@echo "    make base-rust                              build jungleforge/rust:1-dev directly (Rust dev-shell projects)"
+	@echo "    make base-rust 1.82                         build for a specific Rust version"
+	@echo "    make base-rust force=true                   rebuild without cache"
 	@echo ""
 	@echo "  Shared network (run once on a fresh host):"
 	@echo "    make network                                create the external lion-network if missing"
@@ -152,8 +167,9 @@ help:
 	@echo ""
 	@echo "  Per-project, unaffected by the picker (env=dev default; env=prod for production):"
 	@echo "    make restart|logs|sh|ps|migrate <project> [env=prod]"
-	@echo "    (php/node/frankenphp is auto-selected from the project's .docker-env STACK;"
-	@echo "     migrate runs a stack default, or MIGRATE_CMD from .docker-env if set)"
+	@echo "    (php/node/frankenphp/rust is auto-selected from the project's .docker-env STACK;"
+	@echo "     migrate runs a stack default, or MIGRATE_CMD from .docker-env if set;"
+	@echo "     STACK=rust is dev-only — no prod pipeline, no migrate)"
 	@echo ""
 	@echo "  Cross-arch build + push (requires REGISTRY in .env; uses 'docker buildx bake'):"
 	@echo "    make push <project> env=prod                multi-arch (TARGET_PLATFORMS)"
@@ -172,6 +188,7 @@ guard:
 	@if [ -z "$(PROJECT_PATH)" ]; then echo "ERROR: $(PREFIX)_PATH is not set in .env (unknown project '$(PROJECT)')"; exit 1; fi
 	@if [ "$(env)" != "dev" ] && [ "$(env)" != "prod" ]; then echo "ERROR: env must be 'dev' or 'prod' (got '$(env)')"; exit 1; fi
 	@if [ ! -f "$(DEPLOY)/.docker-env" ]; then echo "ERROR: missing $(DEPLOY)/.docker-env"; exit 1; fi
+	@if [ "$(STACK)" = "rust" ] && [ "$(env)" != "dev" ]; then echo "ERROR: STACK=rust has no prod pipeline (local dev-shell tooling only) — use env=dev"; exit 1; fi
 
 # Interactive fzf checklist over stack:version combos (php/node) — see scripts/base.sh.
 # force=true rebuilds whatever's selected without cache. For a version not listed, skip the
@@ -192,6 +209,12 @@ base-node:
 	docker build $(if $(filter true,$(force)),--no-cache) -f base/node.Dockerfile --target prod --build-arg NODE_VERSION=$(NODE_BASE_VERSION) -t jungleforge/node:$(NODE_BASE_VERSION)-prod .
 	docker build $(if $(filter true,$(force)),--no-cache) -f base/node.Dockerfile --target dev  --build-arg NODE_VERSION=$(NODE_BASE_VERSION) -t jungleforge/node:$(NODE_BASE_VERSION)-dev .
 	@echo ">> built jungleforge/node:$(NODE_BASE_VERSION)-prod and jungleforge/node:$(NODE_BASE_VERSION)-dev"
+
+# Build the shared Rust base image ONCE (Rust dev-shell projects FROM jungleforge/rust:<v>-dev).
+# Dev-only — no prod target (see base/rust.Dockerfile). Re-run when you bump the Rust version.
+base-rust:
+	docker build $(if $(filter true,$(force)),--no-cache) -f base/rust.Dockerfile --target dev --build-arg RUST_VERSION=$(RUST_BASE_VERSION) -t jungleforge/rust:$(RUST_BASE_VERSION)-dev .
+	@echo ">> built jungleforge/rust:$(RUST_BASE_VERSION)-dev"
 
 # Create the shared external lion-network if it doesn't exist (idempotent, verbose).
 network:
@@ -222,6 +245,11 @@ ensure-base:
 	     if ! docker image inspect jungleforge/node:$(PROJECT_NODE_VERSION)-dev >/dev/null 2>&1; then \
 	       echo ">> jungleforge/node:$(PROJECT_NODE_VERSION)-dev not built yet — building it first (make base-node $(PROJECT_NODE_VERSION))"; \
 	       $(MAKE) --no-print-directory base-node NODE_BASE_VERSION=$(PROJECT_NODE_VERSION); \
+	     fi ;; \
+	   rust) \
+	     if ! docker image inspect jungleforge/rust:$(PROJECT_RUST_VERSION)-dev >/dev/null 2>&1; then \
+	       echo ">> jungleforge/rust:$(PROJECT_RUST_VERSION)-dev not built yet — building it first (make base-rust $(PROJECT_RUST_VERSION))"; \
+	       $(MAKE) --no-print-directory base-rust RUST_BASE_VERSION=$(PROJECT_RUST_VERSION); \
 	     fi ;; \
 	 esac
 

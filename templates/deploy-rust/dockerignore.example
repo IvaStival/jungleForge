@@ -1,0 +1,8 @@
+# Copy to the project root as .dockerignore. Keeps the build context small — target/ is rebuilt
+# in-container anyway (see docker-compose.rust.dev.yml's anonymous volume exclusion).
+.git
+target
+.env
+.env.*
+*.log
+.DS_Store

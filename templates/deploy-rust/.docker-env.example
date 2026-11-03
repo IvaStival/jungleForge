@@ -1,0 +1,11 @@
+# Per-project Docker orchestration config for a Rust dev-shell project. Copy to deploy/.docker-env.
+# Dev-only stack — there is no prod pipeline here (this is local development tooling, e.g. a
+# Tauri app under active development, not a service this control plane deploys).
+
+STACK=rust              # selects the Rust dev-shell pipeline (build/rust.Dockerfile + docker-compose.rust.dev.yml)
+RUST_VERSION=1
+IMAGE_NAME=example-app
+IMAGE_TAG=latest
+
+# Container name (single container: the dev shell running `sleep infinity`)
+APP_CONTAINER=example-app

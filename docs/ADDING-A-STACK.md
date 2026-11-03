@@ -3,11 +3,13 @@
 jungleforgebase drives every registered project through one `Makefile`, but a project isn't
 locked into PHP-with-nginx. The `STACK` variable in a project's `deploy/.docker-env` picks
 which build/runtime pipeline the Makefile uses — `php` (nginx + php-fpm, the default when
-`STACK` is unset), `node` (Vite dev server / built + served in prod), and `frankenphp`
-(Symfony or any PHP app served directly by FrankenPHP's bundled Caddy, no nginx/php-fpm split).
+`STACK` is unset), `node` (Vite dev server / built + served in prod), `frankenphp`
+(Symfony or any PHP app served directly by FrankenPHP's bundled Caddy, no nginx/php-fpm split),
+and `rust` (a Rust dev shell — e.g. a Tauri app under active development — dev-only, no prod
+pipeline; see the "Dev-only stacks" note in point 2 below).
 
-This doc walks through what a **4th stack** needs, using `frankenphp` as the worked example
-since it's the most recently added one.
+This doc walks through what a new stack needs, using `frankenphp` as the worked example for a
+normal dev/prod stack, and `rust` as the worked example for a **dev-only** one.
 
 ## How the Makefile reads `STACK`
 
@@ -52,6 +54,16 @@ A dev/prod pair, following the existing naming convention (`docker-compose.node.
   container), so editing config doesn't require a rebuild.
 - Prod publishes only `APP_HTTP_PORT` (bound to `127.0.0.1`, front it with the host's system
   nginx/Caddy for TLS) — the container's own port is always `8080` internally.
+
+**Dev-only stacks:** not every stack needs a prod pair. `rust` is the worked example — it's a
+local dev tool (e.g. a Tauri app under active development), not something this control plane
+deploys, so it ships only `docker-compose.rust.dev.yml`, and `base/rust.Dockerfile` /
+`build/rust.Dockerfile` have a `dev` target only, no prod stage. If your stack is also dev-only,
+add an explicit rejection to `guard` rather than letting a missing prod compose file fail with a
+confusing error:
+```makefile
+@if [ "$(STACK)" = "rust" ] && [ "$(env)" != "dev" ]; then echo "ERROR: STACK=rust has no prod pipeline (local dev-shell tooling only) — use env=dev"; exit 1; fi
+```
 
 ### 3. Wire it into the `Makefile`'s `ifeq` branches
 
@@ -98,7 +110,9 @@ The drop-in scaffold a new project copies into its own `deploy/` folder. Mirror
   `exec "$@"`). Keep these generic; project-specific bootstrapping (database provisioning,
   cache warming) belongs in the *project's own* `deploy/`, not the shared template — see how
   `templates/deploy/entrypoint.sh` stays minimal while individual PHP projects add their own
-  `db:setup`-style commands on top.
+  `db:setup`-style commands on top. **Skip these entirely if your stack has no boot sequence** —
+  `templates/deploy-rust/` has none, since `docker-compose.rust.dev.yml`'s `command: sleep
+  infinity` is the whole runtime; there's nothing to prepare before it starts.
 - Any stack-specific runtime config the Dockerfile/compose files expect to find under
   `deploy/` (frankenphp's is `Caddyfile`; the `php` stack's is `nginx/default.conf` +
   `supervisor/*.conf`).

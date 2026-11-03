@@ -231,6 +231,7 @@ collide between instances.
 | ----------------------------------------- | --------------------------------------------------------- |
 | `make base [version] [force=true]`       | Build shared `jungleforge/php:<v>-{fpm,dev}` base (once; `force=true` = no cache) |
 | `make base-node [version] [force=true]`  | Build shared `jungleforge/node:<v>-{prod,dev}` base (once; `force=true` = no cache) |
+| `make base-rust [version] [force=true]`  | Build shared `jungleforge/rust:<v>-dev` base (once; dev-only, `force=true` = no cache) |
 | `make services-logs`                     | Tail the full shared services stack                        |
 | `make build [name] [group=] [force=true]` | Picker (services+apps); confirmed selections build (dev: auto-builds the missing base first) |
 | `make up [name] [group=] [force=true]`   | Picker; confirmed selections start (dev: same base auto-build) |
