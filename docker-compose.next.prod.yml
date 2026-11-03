@@ -1,0 +1,32 @@
+# Per-project PROD stack for a Next.js frontend. The image is built with public NEXT_PUBLIC_*
+# values and served loopback-only so the host reverse proxy owns TLS.
+services:
+  app:
+    build:
+      context: ${PROJECT_PATH}
+      dockerfile: ${APP_DOCKERFILE}
+      target: app
+      args:
+        NODE_VERSION: ${NODE_VERSION:-20}
+      secrets:
+        - docker_env
+    image: ${REGISTRY:+${REGISTRY}/}${IMAGE_NAME:-app}:${IMAGE_TAG:-latest}
+    container_name: ${APP_CONTAINER:-app-web}
+    restart: unless-stopped
+    env_file:
+      - ${PROJECT_PATH}/deploy/.docker-env
+    ports:
+      - "127.0.0.1:${APP_HTTP_PORT:-3000}:${APP_HTTP_PORT:-3000}"
+    networks:
+      lion-network:
+        aliases:
+          - ${APP_HOST:-app}
+
+networks:
+  lion-network:
+    external: true
+    name: ${NETWORK_NAME:-lion-network}
+
+secrets:
+  docker_env:
+    file: ${PROJECT_PATH}/deploy/.docker-env

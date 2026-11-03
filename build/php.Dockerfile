@@ -17,6 +17,12 @@ ARG PHP_VERSION=8.4
 # Requires the base built once: `make base`. jungleforge/php:<v>-dev already has php + extensions
 # + nginx + supervisor + xdebug + composer/node + zsh. Code is volume-mounted at runtime.
 FROM jungleforge/php:${PHP_VERSION}-dev AS dev
+# Optional per-project runtime packages: one or more Alpine package names in
+# deploy/runtime-apk-packages (e.g. `ffmpeg poppler-utils`). Missing/empty file = no-op.
+RUN --mount=type=bind,source=deploy,target=/tmp/project-deploy,ro \
+    if [ -s /tmp/project-deploy/runtime-apk-packages ]; then \
+        apk add --no-cache $(cat /tmp/project-deploy/runtime-apk-packages); \
+    fi
 COPY deploy/supervisor/supervisord.dev.conf /etc/supervisor/supervisord.conf
 COPY deploy/nginx/default.conf.template /etc/nginx/http.d/default.conf.template
 COPY deploy/entrypoint.dev.sh /usr/local/bin/entrypoint
@@ -49,12 +55,18 @@ RUN composer dump-autoload --optimize --classmap-authoritative --no-dev --no-scr
 # Optional: API-only projects have no package.json — the whole stage then just ensures an empty
 # public/build exists so the app stage's COPY succeeds. composer.json guarantees the first COPY
 # matches at least one file so the optional package globs may match zero.
+# vendor/ comes from the vendor stage: some packages' CSS (e.g. Filament themes) is imported from
+# vendor/, which .dockerignore keeps out of the build context. A failed build fails the image
+# instead of shipping an empty (or stale host) public/build.
 FROM --platform=$BUILDPLATFORM node:20-alpine AS assets
 WORKDIR /app
 COPY composer.json package.jso[n] package-lock.jso[n] ./
 RUN if [ -f package.json ]; then npm ci --no-audit --no-fund || npm install --no-audit --no-fund; fi
 COPY . .
-RUN if [ -f package.json ] && npm run 2>/dev/null | grep -qiE '^[[:space:]]+build'; then \
+COPY --from=vendor /app/vendor ./vendor
+RUN set -e; \
+    rm -rf public/build public/hot; \
+    if [ -f package.json ] && npm run 2>/dev/null | grep -qiE '^[[:space:]]+build'; then \
         npm run build; \
     fi; \
     mkdir -p public/build
@@ -83,6 +95,12 @@ RUN apk add --no-cache \
     && apk del .build-deps \
     && sed -i 's/^user .*/user www-data;/' /etc/nginx/nginx.conf \
     && rm -rf /tmp/* /var/cache/apk/*
+# Optional per-project runtime packages: one or more Alpine package names in
+# deploy/runtime-apk-packages (e.g. `ffmpeg poppler-utils`). Missing/empty file = no-op.
+RUN --mount=type=bind,source=deploy,target=/tmp/project-deploy,ro \
+    if [ -s /tmp/project-deploy/runtime-apk-packages ]; then \
+        apk add --no-cache $(cat /tmp/project-deploy/runtime-apk-packages); \
+    fi
 
 # ---------- prod runtime (baked code + assets, nginx + php-fpm under supervisord) ----------
 FROM php-base AS app

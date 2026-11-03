@@ -3,7 +3,7 @@
 #   make build <project> env=prod && make up <project> env=prod
 #
 # Only the project's .env is mounted at runtime; everything else is baked into the image.
-# Backing services are the shared stack on lion-network (`make services-up`). FrankenPHP
+# Backing services are the shared stack on lion-network (`make services-start`). FrankenPHP
 # publishes on 127.0.0.1 — terminate TLS with the host's system nginx/Caddy and proxy to it.
 
 services:

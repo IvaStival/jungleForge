@@ -1,0 +1,12 @@
+# Copy to the project root as .dockerignore. Build-time deployment values are supplied as a
+# BuildKit secret, so local environments must never enter the image context.
+.git
+node_modules
+.next
+out
+coverage
+.env
+.env.*
+deploy/.docker-env
+*.log
+.DS_Store

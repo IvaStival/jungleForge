@@ -1,7 +1,7 @@
-# jungleforgebase
+# JungleForge
 
 A small **Docker control plane** for running many backend + frontend projects from one place —
-PHP/Laravel, FrankenPHP (e.g. Symfony), and Node/Vite — sharing one MariaDB + Postgres + Redis + RabbitMQ
+PHP/Laravel, FrankenPHP (e.g. Symfony), and Node/Vite — sharing one MariaDB + Postgres + Redis + RabbitMQ + MinIO
 stack.
 
 One `make` command spins up any registered project as a **single self-contained container**, in
@@ -17,10 +17,10 @@ projects, and pull engine updates whenever you want — see
 ## Quickstart
 
 ```bash
-git clone <your-fork-url> jungleforgebase && cd jungleforgebase
+git clone <your-fork-url> jungleforge && cd jungleforge
 cp .env.example .env
 make base                                              # build the shared PHP base image (once)
-make up group=services                                 # picker: mariadb + postgres + redis + rabbitmq —
+make up group=services                                 # picker: mariadb + postgres + redis + rabbitmq + minio —
                                                         # ctrl-a to select all, Continue + Enter
 echo 'DEMO_API_PATH='"$PWD"'/examples/demo-api' >> .env
 make up demo-api                                       # picker filtered to "demo-api" — Enter, Enter
@@ -30,7 +30,7 @@ curl localhost:8090/                                   # → confirms the whole 
 `examples/demo-api` is a minimal Laravel app with its own `deploy/`, included so you can prove
 the control plane works end-to-end before registering your own project. Once it's running, swap
 it for your own: register your project's path in `.env`, scaffold its `deploy/` from
-`templates/deploy/` (or `-node`/`-frankenphp`), and `make up <your-project>`.
+`templates/deploy/` (or `-node`/`-next`/`-frankenphp`), and `make up <your-project>`.
 
 ---
 
@@ -38,7 +38,7 @@ it for your own: register your project's path in `.env`, scaffold its `deploy/` 
 
 ```
                         ┌───────────────────────────────────────────────┐
-make <cmd> <project>    │ jungleforgebase (this repo) — control plane   │
+make <cmd> <project>    │ jungleforge (this repo) — control plane       │
 ───────────────────────▶│                                               │
                         │ .env        project registry + credentials    │
                         │ Makefile    resolves paths, runs compose      │
@@ -57,23 +57,23 @@ make <cmd> <project>    │ jungleforgebase (this repo) — control plane   │
                      │                                                   │
                      ┴─────────────────────────┬─────────────────────────┴
                                                │ lion-network (external, shared)
-                               ┌───────────────────────────────────────┐
-                               │ services (run once)                   │
-                               │ mariadb · postgres · redis · rabbitmq │
-                               └───────────────────────────────────────┘
+                          ┌───────────────────────────────────────────────┐
+                          │ services (run once)                           │
+                          │ mariadb · postgres · redis · rabbitmq · minio │
+                          └───────────────────────────────────────────────┘
 ```
 
 - **Each project runs as one container.** A `php`-stack project runs nginx + php-fpm + Laravel
   Horizon + the scheduler under `supervisord`; `frankenphp` runs a single FrankenPHP process
-  (Caddy + PHP); `node` runs Vite. Pick the stack with `STACK=` in the project's
+  (Caddy + PHP); `node` runs Vite; `next` runs Next.js (`next dev` / standalone server). Pick the stack with `STACK=` in the project's
   `deploy/.docker-env` (`php` is the default).
 - **Every project shares the `lion-network`** (name configurable via `NETWORK_NAME` in `.env`,
   default `lion-network`) and is reachable by other projects at `http://<project>:<that
   project's own APP_HTTP_PORT>` (the in-container port matches the host-published one — no fixed
   `8080`/`5173` — except `frankenphp` projects, which keep a fixed port set in their own
-  hand-owned Caddyfile), and reaches MariaDB/Postgres/Redis/RabbitMQ at their hostnames. Only each
+  hand-owned Caddyfile), and reaches MariaDB/Postgres/Redis/RabbitMQ/MinIO at their hostnames. Only each
   project's **host** port (`APP_HTTP_PORT`) needs to be unique.
-- **A project carries no Dockerfile of its own** — it builds from jungleforgebase's shared
+- **A project carries no Dockerfile of its own** — it builds from jungleforge's shared
   `build/<stack>.Dockerfile`. Its `deploy/` folder (scaffolded from `templates/deploy*/`) is
   just config: web server vhost/Caddyfile, supervisor, entrypoints, `.docker-env`.
 - **`make base`/`make base-node` build the shared PHP/Node images once** (`force=true` rebuilds
@@ -89,10 +89,10 @@ For the full breakdown of build stages, config resolution, and how to add a new 
 
 ## Consuming this repo
 
-jungleforgebase is a **living upstream**, not a template you copy once. Fork it, then:
+jungleforge is a **living upstream**, not a template you copy once. Fork it, then:
 
 ```bash
-git remote add upstream https://github.com/<original-owner>/jungleforgebase.git
+git remote add upstream https://github.com/<original-owner>/jungleForge.git
 git pull upstream main    # whenever you want engine updates
 ```
 
@@ -121,7 +121,7 @@ want them, with nothing of yours in the way.
 cp .env.example .env          # then edit: register projects + set service credentials
 make base                     # build the shared PHP base image (once; `make base 8.3` for 8.3,
                                # `make base force=true` to rebuild without cache)
-make up group=services        # picker: mariadb + postgres + redis + rabbitmq (+ any project with
+make up group=services        # picker: mariadb + postgres + redis + rabbitmq + minio (+ any project with
                                # BASE_SERVICE=true) — ctrl-a to select all, then Continue + Enter
 ```
 
@@ -129,7 +129,7 @@ Register a project by adding its absolute path to `.env` (name uppercased, dashe
 
 ```dotenv
 YOUR_APP_PATH=/Users/you/Projects/your-app
-DEMO_API_PATH=/Users/you/Projects/jungleforgebase/examples/demo-api
+DEMO_API_PATH=/Users/you/Projects/jungleforge/examples/demo-api
 ```
 
 Each project's host port is set in its own `deploy/.docker-env` (`APP_HTTP_PORT`) — give each a
@@ -139,12 +139,12 @@ project.
 ### 2. Scaffold a project
 
 ```bash
-cp -r templates/deploy /path/to/your-app/deploy        # or templates/deploy-node, templates/deploy-frankenphp
+cp -r templates/deploy /path/to/your-app/deploy        # or templates/deploy-node, -next, -frankenphp
 cp /path/to/your-app/deploy/.docker-env.example /path/to/your-app/deploy/.docker-env
 # edit deploy/.docker-env: IMAGE_NAME, PHP_CONTAINER, PHP_VERSION, APP_HTTP_PORT (distinct per project)
 ```
 
-Then register the project's path in jungleforgebase's `.env` (`YOUR_APP_PATH=...`).
+Then register the project's path in jungleforge's `.env` (`YOUR_APP_PATH=...`).
 
 ### 3. Day-to-day (dev is the default `env`)
 
@@ -201,13 +201,13 @@ make down                      # same picker; confirmed core services get `stop`
 ```
 
 `make build`/`make up`/`make down` (`scripts/pick.sh`) all open the same picker: a **services**
-section (mariadb/postgres/redis/rabbitmq + any project with `BASE_SERVICE=true`) and an **apps** section
+section (mariadb/postgres/redis/rabbitmq/minio + any project with `BASE_SERVICE=true`) and an **apps** section
 (everything else registered), both showing live running/stopped status. Nothing starts
 pre-selected. **Enter** toggles the highlighted row and advances to the next one; a pinned
 `>>> Continue: <verb> selected` row is what you land on and press Enter on to execute against
 everything toggled (`ctrl-a` selects everything listed). The positional word (if given) filters
 by substring match; `group=services`/`group=apps` filters by section — both combine.
-All 4 core services are listed under every verb, including `verb=build` — selecting one there is
+All 5 core services are listed under every verb, including `verb=build` — selecting one there is
 a no-op (no build step); `verb=down` runs `stop` (not `down`) on confirmed core services and a
 real `down` on confirmed apps.
 
@@ -221,7 +221,7 @@ make info group=services      # services section only
 ```
 
 Running more than one instance of this control plane on the same host? Set `SERVICES_PREFIX` in
-`.env` (empty by default — bare `postgres`/`redis`/`rabbitmq`/`services` names), including your
+`.env` (empty by default — bare `postgres`/`redis`/`rabbitmq`/`minio`/`services` names), including your
 own trailing separator (e.g. `SERVICES_PREFIX=myinstance-`), so container/project names don't
 collide between instances.
 
@@ -231,6 +231,7 @@ collide between instances.
 | ----------------------------------------- | --------------------------------------------------------- |
 | `make base [version] [force=true]`       | Build shared `jungleforge/php:<v>-{fpm,dev}` base (once; `force=true` = no cache) |
 | `make base-node [version] [force=true]`  | Build shared `jungleforge/node:<v>-{prod,dev}` base (once; `force=true` = no cache) |
+| `make base-rust [version] [force=true]`  | Build shared `jungleforge/rust:<v>-dev` base (once; dev-only, `force=true` = no cache) |
 | `make services-logs`                     | Tail the full shared services stack                        |
 | `make build [name] [group=] [force=true]` | Picker (services+apps); confirmed selections build (dev: auto-builds the missing base first) |
 | `make up [name] [group=] [force=true]`   | Picker; confirmed selections start (dev: same base auto-build) |
@@ -240,6 +241,9 @@ collide between instances.
 | `make logs \| ps <p> [env=prod]`         | Logs / status                                               |
 | `make sh <p> [env=prod]`                 | Shell into the `app` container                            |
 | `make migrate <p> [env=prod]`            | Stack-default migration command (`MIGRATE_CMD` overrides)  |
+| `make start \| stop <p> [<NAME>_PATH=<dir>]` | Start (`up -d`) / stop (`down`) with no picker; the path runs another checkout, e.g. a git worktree |
+| `make deps <p>`                          | `composer install` / `npm install` in the running container, per `STACK` |
+| `make services-start`                    | Start the shared services stack, no picker                 |
 | `make push <p> env=prod [arch=armv7]`    | Multi-arch (or armv7) build & push to `REGISTRY`          |
 | `make pull <p> env=prod`                 | Pull the matching-arch image on the target host           |
 | `make apply-arch \| revert-arch arch=armv7` | Apply / revert low-mem tuning to `defaults/php/*`      |

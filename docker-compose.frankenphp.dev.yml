@@ -5,7 +5,7 @@
 #
 # Code (incl. vendor/) is volume-mounted from ${PROJECT_PATH}; the Caddyfile is mounted from the
 # project's own deploy/Caddyfile so it's editable without a rebuild. Backing services (postgres /
-# redis / rabbitmq) are the shared stack on lion-network — start them with `make services-up`.
+# redis / rabbitmq) are the shared stack on lion-network — start them with `make services-start`.
 
 services:
   app:

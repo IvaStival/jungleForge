@@ -1,9 +1,9 @@
 # Shared backing services for ALL projects — run ONCE:
-#   make services-up      (docker compose -p ${SERVICES_PREFIX}services -f docker-compose.services.yml up -d)
+#   make services-start   (docker compose -p ${SERVICES_PREFIX}services -f docker-compose.services.yml up -d)
 #
-# Projects connect to these by alias (mariadb / postgres / redis / rabbitmq) over lion-network.
+# Projects connect to these by alias (mariadb / postgres / redis / rabbitmq / minio) over lion-network.
 # Credentials and ports come from jungleforge's .env. SERVICES_PREFIX is empty (unprefixed
-# "postgres"/"redis"/"rabbitmq"/"services" container/project names) unless set in .env — set it
+# "postgres"/"redis"/"rabbitmq"/"minio"/"services" container/project names) unless set in .env — set it
 # (including your own trailing separator, e.g. "myinstance-") if you run more than one instance
 # of this control plane on the same host, so the two don't collide.
 
@@ -77,6 +77,11 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: ${SERVICES_PREFIX}rabbitmq
+    # Fixed (not SERVICES_PREFIX-derived — that value itself can change) — RabbitMQ's Erlang node
+    # identity is rabbit@<hostname>, and its Mnesia data directory is keyed on that node name. Without
+    # a pinned hostname, Docker assigns a new one on every recreate, so RabbitMQ silently bootstraps a
+    # brand-new empty node each time instead of recovering its existing vhosts/queues/users.
+    hostname: rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
@@ -91,9 +96,35 @@ services:
         aliases:
           - rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # A plain TCP check on the AMQP port — rabbitmq-diagnostics ping spins up a whole extra
+      # Erlang VM just to ask the broker "are you alive?", which is expensive enough to matter
+      # on a memory-constrained host when it fires every interval, forever.
+      test: ["CMD", "nc", "-z", "127.0.0.1", "5672"]
       interval: 15s
       timeout: 10s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: ${SERVICES_PREFIX}minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      lion-network:
+        aliases:
+          - minio
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
       retries: 5
 
 networks:
@@ -106,3 +137,4 @@ volumes:
   postgres-data:
   redis-data:
   rabbitmq-data:
+  minio-data:

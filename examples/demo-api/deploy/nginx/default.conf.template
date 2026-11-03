@@ -16,11 +16,12 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # Static assets served directly by nginx.
+    # Static assets served directly by nginx. Misses fall through to the app, since some
+    # assets are route-served rather than files on disk (e.g. /livewire/livewire.js).
     location ~* \.(?:css|js|mjs|woff2?|ttf|eot|svg|ico|png|jpg|jpeg|gif|webp|avif|map)$ {
         expires 30d;
         access_log off;
-        try_files $uri =404;
+        try_files $uri /index.php?$query_string;
     }
 
     location / {

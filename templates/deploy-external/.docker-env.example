@@ -1,0 +1,11 @@
+# Per-project Docker orchestration config for a project that supplies its OWN complete Dockerfile
+# and docker-compose.yml. The control plane points straight at that compose file — no templating,
+# no dev/prod split, no shared base image involved.
+#
+# Required by the control plane itself:
+STACK=external
+APP_CONTAINER=example-app   # must match whatever container_name your own compose file sets
+
+# Everything else below is whatever YOUR OWN docker-compose.yml already references via ${VAR} —
+# the control plane passes this file as --env-file, which replaces compose's default .env
+# auto-load, so any variable your compose file expects from a project-root .env now belongs here.

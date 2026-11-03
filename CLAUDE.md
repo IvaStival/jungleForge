@@ -10,7 +10,7 @@ A **Docker control plane** for running many projects from one place, across thre
 code — it is the Makefile + compose files + shared base images + config defaults + project
 templates that drive *other* projects living elsewhere on disk. Each project runs as a
 **single self-contained container**, in `dev` (code volume-mounted, Xdebug) or `prod`
-(code/assets baked into the image). A single shared stack of MariaDB + Postgres + Redis + RabbitMQ backs
+(code/assets baked into the image). A single shared stack of MariaDB + Postgres + Redis + RabbitMQ + MinIO backs
 every project. See `docs/ADDING-A-STACK.md` for how the `STACK` discriminator works and what a
 new stack needs.
 
@@ -19,9 +19,9 @@ new stack needs.
 ```bash
 make base                       # build shared jungleforge/php:8.4-{fpm,dev} base (once; `make base 8.3` for another version)
 make base force=true            # rebuild the base without cache
-make services-logs              # tail the shared mariadb/postgres/redis/rabbitmq stack
+make services-logs              # tail the shared mariadb/postgres/redis/rabbitmq/minio stack
 
-# Interactive picker — services (mariadb/postgres/redis/rabbitmq + BASE_SERVICE=true projects) and apps
+# Interactive picker — services (mariadb/postgres/redis/rabbitmq/minio + BASE_SERVICE=true projects) and apps
 # (everything else), running/stopped shown. Enter toggles + advances; land on the pinned
 # "Continue" row and press Enter to execute; ctrl-a selects everything shown. env=dev default.
 make up                         # picker: everything
@@ -37,6 +37,11 @@ make info fantastica             # filtered to matches("fantastica")
 # Per-project, unaffected by the picker — project name is the word after the target; env=dev default.
 make restart|logs|ps|migrate <project> [env=prod]
 make sh <project>               # shell into app container (zsh in dev, sh in prod)
+
+# Non-interactive (scripts/CI) — no picker; <NAME>_PATH=<folder> runs another checkout (e.g. a worktree).
+make start|stop <project>       # up -d / down
+make deps <project>             # composer install (php/frankenphp) / npm install (node/next) in the running container
+make services-start             # start the shared services stack
 
 # Multi-arch build & push (needs REGISTRY in .env; uses docker buildx bake)
 make push <project> env=prod                # multi-arch via TARGET_PLATFORMS
@@ -70,7 +75,7 @@ targets `scripts/pick.sh` calls once it's resolved an exact project from the pic
 
 ## Frontend (Node/Vite) projects
 
-A project's `deploy/.docker-env` picks its stack via `STACK=php|node|frankenphp` — the Makefile
+A project's `deploy/.docker-env` picks its stack via `STACK=php|node|next|frankenphp|rust|external` — the Makefile
 reads it and auto-selects the Dockerfile + compose files, so `make build|up|down <project>` is
 identical across stacks. `STACK` unset ⇒ `php`.
 
@@ -91,6 +96,25 @@ identical across stacks. `STACK` unset ⇒ `php`.
   its own `APP_HTTP_PORT`, not a fixed `8080`, unless it's a `frankenphp` backend, see below).
 - `make migrate` is PHP-only (artisan) and does not apply to Node projects.
 
+## Next.js projects
+
+`STACK=next` is for server-rendered Next.js frontends, distinct from the Vite-oriented `node`
+stack. It selects `build/next.Dockerfile` and `docker-compose.next.{dev,prod}.yml`.
+
+- **Base image:** reuses the same Node base built by `make base-node` (`ensure-base` treats
+  `node|next` alike).
+- **Register a frontend:** add `<NAME>_PATH=/abs/path` to `.env`, scaffold its `deploy/` from
+  `templates/deploy-next/` (copy `dockerignore.example` to the project root as `.dockerignore`),
+  and set `STACK=next` plus `NODE_VERSION`, `IMAGE_NAME`, `APP_CONTAINER`, `VITE_PORT`,
+  `APP_HTTP_PORT` and `NEXT_PUBLIC_API_URL` in `deploy/.docker-env`.
+- **Dev:** `next dev` (Fast Refresh) under supervisord on `VITE_PORT`; source is mounted and
+  `node_modules` is installed on first start onto an anonymous volume.
+- **Prod:** `next build` produces standalone output (the project's `next.config` must set
+  `output: 'standalone'`); `node server.js` runs under supervisord, loopback-only on
+  `APP_HTTP_PORT`. `NEXT_PUBLIC_*` values are read from `deploy/.docker-env` through a BuildKit
+  secret at image-build time, so they are inlined without becoming build args. The public API URL
+  must be reachable by browsers — never a Docker-only hostname.
+
 ## FrankenPHP projects
 
 `STACK=frankenphp` selects `build/frankenphp.Dockerfile` and `docker-compose.frankenphp.
@@ -99,6 +123,45 @@ serves the app on `:8080`, configured via the project's `deploy/Caddyfile` (moun
 baked in prod). Scaffold from `templates/deploy-frankenphp/`. Composer deps are volume-mounted
 in dev (run `composer install` on the host yourself) and baked into a builder stage in prod,
 mirroring the php stack's `vendor`/`assets` convention.
+
+## Rust dev-shell projects
+
+`STACK=rust` is for a local Rust dev tool under active development (e.g. a Tauri app, not
+something this control plane serves or deploys) — **dev-only, no prod pipeline**. The container
+just runs `sleep infinity`; you `make sh <project>` into it and run `cargo`/`clippy` by hand.
+
+- **Build the Rust base once:** `make base-rust` builds `jungleforge/rust:1-dev` directly (or pick
+  it from the interactive `make base` picker); `make base-rust 1.82` to pin a version,
+  `make base-rust force=true` to rebuild without cache. Project DEV builds layer thinly FROM
+  `jungleforge/rust:1-dev`.
+- **Debian, not Alpine:** unlike the php/node bases, `base/rust.Dockerfile` is `FROM
+  rust:${RUST_VERSION}` (Debian) rather than an Alpine variant — the upstream Rust image is
+  Debian-based, and Alpine risks musl-linking issues for crates with C dependencies (e.g.
+  `rusqlite`'s `bundled` sqlite).
+- **Register a project:** add `<NAME>_PATH=/abs/path` to `.env`, scaffold its `deploy/` from
+  `templates/deploy-rust/`, and set `STACK=rust` (plus `RUST_VERSION`, `IMAGE_NAME`,
+  `APP_CONTAINER`) in `deploy/.docker-env`.
+- **No prod, no migrate, no ports:** `guard` rejects `env=prod` for this stack outright. There's
+  no HTTP surface, no nginx — just the `lion-network` alias every container gets for free.
+- **Build artifacts excluded from the bind mount:** `docker-compose.rust.dev.yml` anon-volumes
+  `/workspace/target`, mirroring `node`'s `/app/node_modules` exclusion, so Linux-built binaries
+  don't leak into a host-native (e.g. macOS) `target/` directory.
+- Toolchain baked into the base image: `rustfmt`, `clippy`, `rust-analyzer` (via `rustup
+  component add`) plus `cargo-watch`, `cargo-edit`, `cargo-expand` (via `cargo install`).
+
+## External / bring-your-own-Docker projects
+
+`STACK=external` is for a project that already has its own complete, working `Dockerfile` *and*
+`docker-compose.yml` — the Makefile points `COMPOSE_FILE` straight at
+`$(PROJECT_PATH)/docker-compose.yml` and otherwise gets out of the way: no templating, no shared
+base image, no dev/prod split (`env=dev`/`env=prod` resolve to the same file). Unlike every other
+stack, the project's own compose file is the source of truth for everything — ports, volumes,
+build args. Two things the control plane still requires of that compose file: a service named
+`app` (so `make sh`/`make migrate` work unmodified) and an explicit `container_name:` sourced from
+`APP_CONTAINER` in `deploy/.docker-env` (so status detection in the picker/`make info` works).
+Scaffold from `templates/deploy-external/`. Use this only for genuinely bespoke, one-off Docker
+setups — if the same shape would be reused by another project, build a real templated stack
+instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent).
 
 ## Architecture essentials
 
@@ -121,10 +184,13 @@ mirroring the php stack's `vendor`/`assets` convention.
   which still use their own hand-set port). `make network`/`ensure-network` create the network
   (under whatever `NETWORK_NAME` resolves to) if it doesn't exist.
 - **`SERVICES_PREFIX` (empty by default, in `.env`)** prefixes `docker-compose.services.yml`'s
-  compose project name and its mariadb/postgres/redis/rabbitmq container names — unset, they're just
-  `services`/`postgres`/`redis`/`rabbitmq`. Only needs setting if running more than one instance
+  compose project name and its mariadb/postgres/redis/rabbitmq/minio container names — unset, they're just
+  `services`/`postgres`/`redis`/`rabbitmq`/`minio`. Only needs setting if running more than one instance
   of this control plane on the same host, and include your own trailing separator when you do
   (e.g. `SERVICES_PREFIX=myinstance-`).
+- **Extra Alpine packages per project:** list package names in `deploy/runtime-apk-packages`
+  (whitespace-separated, e.g. `ffmpeg poppler-utils`) and `build/php.Dockerfile` installs them in
+  both the `dev` and prod (`php-base`) stages. Missing or empty file = no-op; rebuild to apply.
 - **Config resolution (in the Makefile):** for each of `php.ini`, `php.dev.ini`, `opcache.ini`,
   `www.conf` → use the project's `deploy/php/<file>` if present, else `defaults/php/<file>`. These
   are *mounted* (not baked) so they're editable without a rebuild. The php-stack nginx vhost and
@@ -134,7 +200,7 @@ mirroring the php stack's `vendor`/`assets` convention.
   compiles its own extension layer (`php-base` stage) so production images are portable for
   multi-arch push and don't depend on the locally-built base.
 - **One `fzf` picker, two groups.** `make build`/`make up`/`make down` (`scripts/pick.sh`) all
-  open the same picker: a **services** section (mariadb/postgres/redis/rabbitmq + any project opted in
+  open the same picker: a **services** section (mariadb/postgres/redis/rabbitmq/minio + any project opted in
   via `BASE_SERVICE=true` in its `deploy/.docker-env` — set that flag when a project is shared
   infra other projects depend on, e.g. a websocket bridge other projects reach over RabbitMQ, not
   a standalone app) and an **apps** section (every other registered project). The groups are a
@@ -143,7 +209,7 @@ mirroring the php stack's `vendor`/`assets` convention.
   row and advances to the next one, and the pinned `>>> Continue: <verb> selected` row at the
   bottom is what you land on and press Enter on to actually execute (`ctrl-a` selects everything
   currently listed). The positional word (if any) filters by substring match against the slug;
-  `group=services`/`group=apps` filters by section; both combine. All 4 core services are listed
+  `group=services`/`group=apps` filters by section; both combine. All 5 core services are listed
   under every verb, including `verb=build` — selecting one there is a no-op (pulled images, no
   build step). `verb=down` runs `stop` (not `down`) on confirmed core
   services — scoped to just the ones selected, since `down` isn't — and a real `docker compose
@@ -175,6 +241,12 @@ mirroring the php stack's `vendor`/`assets` convention.
 - `base/node.Dockerfile` — prebuilt Node base (`prod` + `dev` targets); built by `make base-node`.
 - `docker-compose.node.{dev,prod}.yml` — per-project dev/prod for Node projects (selected when
   `STACK=node`).
+- `build/next.Dockerfile` — the Next.js counterpart. Stages: `dev` (thin, runs `next dev`),
+  `deps`, `build` (Next standalone output), `app` (standalone server + static assets).
+- `docker-compose.next.{dev,prod}.yml` — per-project dev/prod for Next.js projects (selected when
+  `STACK=next`).
+- `templates/deploy-next/` — drop-in scaffold for a Next.js project's `deploy/` (entrypoints,
+  supervisor configs, `.docker-env.example`, `dockerignore.example`).
 - `build/frankenphp.Dockerfile` — the FrankenPHP counterpart. Stages: `dev` (thin, FROM the
   official `dunglas/frankenphp` image), `vendor` (composer, prod only), `app` (prod runtime).
 - `docker-compose.frankenphp.{dev,prod}.yml` — per-project dev/prod for FrankenPHP projects.
@@ -182,6 +254,19 @@ mirroring the php stack's `vendor`/`assets` convention.
   supervisor configs running vite, `.docker-env.example`).
 - `templates/deploy-frankenphp/` — drop-in scaffold for a FrankenPHP project's `deploy/`
   (entrypoints, `Caddyfile`, `.docker-env.example`).
+- `build/rust.Dockerfile` — the Rust counterpart of `build/php.Dockerfile`/`build/node.Dockerfile`.
+  Single `dev` stage: a thin layer FROM `jungleforge/rust:<v>-dev` — no prod stage, this stack is
+  dev-only.
+- `base/rust.Dockerfile` — prebuilt Rust base (`dev` target only, Debian-based); built by
+  `make base-rust`.
+- `docker-compose.rust.dev.yml` — per-project dev for Rust dev-shell projects (selected when
+  `STACK=rust`); no `.prod.yml` counterpart exists.
+- `templates/deploy-rust/` — drop-in scaffold for a Rust project's `deploy/` (just
+  `.docker-env.example` and `dockerignore.example` — no entrypoints, since the container has no
+  boot sequence to run).
+- `templates/deploy-external/` — minimal scaffold for a `STACK=external` project's `deploy/` (just
+  `.docker-env.example` documenting the two required vars; everything else depends on what that
+  project's own compose file needs).
 - `defaults/php/` — fallback php.ini / php.dev.ini / opcache.ini / www.conf.
 - `templates/deploy/` — drop-in scaffold copied into a `php`-stack project's `deploy/`
   (entrypoints, nginx vhost, supervisor configs, `.docker-env.example`).
@@ -193,14 +278,15 @@ mirroring the php stack's `vendor`/`assets` convention.
 
 ## Gotchas
 
-- **`make build`/`make up` auto-build the shared base if it's missing** (dev env, php/node
+- **`make build`/`make up` auto-build the shared base if it's missing** (dev env, php/node/rust
   stacks only — prod self-compiles and frankenphp bases off the public `dunglas/frankenphp`
   image directly, so neither needs this). The version comes from the project's own
-  `deploy/.docker-env` (`PHP_VERSION`/`NODE_VERSION`); on a hit it's a silent no-op, on a miss it
-  prints `>> jungleforge/php:X-dev not built yet — building it first (make base X)` and runs the
-  equivalent of `make base X`/`make base-node X` before continuing. This is what a fresh clone or
-  a project pinning a not-yet-built version hits automatically — no need to remember to run
-  `make base` by hand first. See `ensure-base` in the Makefile.
+  `deploy/.docker-env` (`PHP_VERSION`/`NODE_VERSION`/`RUST_VERSION`); on a hit it's a silent
+  no-op, on a miss it prints `>> jungleforge/php:X-dev not built yet — building it first (make
+  base X)` and runs the equivalent of `make base X`/`make base-node X`/`make base-rust X` before
+  continuing. This is what a fresh clone or a project pinning a not-yet-built version hits
+  automatically — no need to remember to run `make base` by hand first. See `ensure-base` in the
+  Makefile.
 - **`arch=armv7` tuning** mutates `defaults/php/*` via `sed -i.bak`. `make push … arch=armv7`
   auto-reverts via an EXIT/INT/TERM trap; `apply-arch`/`revert-arch` are the persistent
   (no auto-revert) variants. `apply-arch` refuses to run if `.bak` snapshots already exist —

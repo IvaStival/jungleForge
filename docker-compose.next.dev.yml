@@ -1,0 +1,29 @@
+# Per-project DEV stack for a Next.js frontend. The browser reaches Next and HMR at VITE_PORT.
+services:
+  app:
+    build:
+      context: ${PROJECT_PATH}
+      dockerfile: ${APP_DOCKERFILE}
+      target: dev
+      args:
+        NODE_VERSION: ${NODE_VERSION:-20}
+    image: ${IMAGE_NAME:-app}:dev
+    container_name: ${APP_CONTAINER:-app-web}
+    restart: unless-stopped
+    volumes:
+      - ${PROJECT_PATH}:/app
+      - /app/node_modules
+    environment:
+      VITE_PORT: ${VITE_PORT:-3000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    ports:
+      - "${VITE_PORT:-3000}:${VITE_PORT:-3000}"
+    networks:
+      lion-network:
+        aliases:
+          - ${APP_HOST:-app}
+
+networks:
+  lion-network:
+    external: true
+    name: ${NETWORK_NAME:-lion-network}
