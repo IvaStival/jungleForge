@@ -36,12 +36,12 @@ make info fantastica             # filtered to matches("fantastica")
 
 # Per-project, unaffected by the picker — project name is the word after the target; env=dev default.
 make restart|logs|ps|migrate <project> [env=prod]
+make sh <project>               # shell into app container (zsh in dev, sh in prod)
 
 # Non-interactive (scripts/CI) — no picker; <NAME>_PATH=<folder> runs another checkout (e.g. a worktree).
 make start|stop <project>       # up -d / down
 make deps <project>             # composer install (php/frankenphp) / npm install (node/next) in the running container
 make services-start             # start the shared services stack
-make sh <project>               # shell into app container (zsh in dev, sh in prod)
 
 # Multi-arch build & push (needs REGISTRY in .env; uses docker buildx bake)
 make push <project> env=prod                # multi-arch via TARGET_PLATFORMS
