@@ -142,7 +142,7 @@ export PROJECT_PATH PHP_INI PHP_DEV_INI OPCACHE_INI FPM_POOL REGISTRY TARGET_PLA
 COMPOSE = docker compose -p $(PROJECT) --env-file $(DEPLOY)/.docker-env -f $(COMPOSE_FILE)
 
 .DEFAULT_GOAL := help
-.PHONY: help guard network ensure-network ensure-base base base-php base-node base-rust services-logs \
+.PHONY: help guard network ensure-network ensure-base base base-php base-node base-rust prune-old-images services-logs \
         build up down info _build _up _down restart logs sh ps migrate \
         push pull apply-arch revert-arch
 
@@ -213,6 +213,7 @@ base-php:
 	docker build $(if $(filter true,$(force)),--no-cache) -f base/php.Dockerfile --target fpm --build-arg PHP_VERSION=$(BASE_VERSION) -t jungleforge/php:$(BASE_VERSION)-fpm .
 	docker build $(if $(filter true,$(force)),--no-cache) -f base/php.Dockerfile --target dev --build-arg PHP_VERSION=$(BASE_VERSION) -t jungleforge/php:$(BASE_VERSION)-dev .
 	@echo ">> built jungleforge/php:$(BASE_VERSION)-fpm and jungleforge/php:$(BASE_VERSION)-dev"
+	@$(MAKE) --no-print-directory prune-old-images
 
 # Build the shared Node base images ONCE (frontend project DEV builds FROM jungleforge/node:<v>-dev).
 # Re-run when you bump the Node major version. Default version 20.
@@ -220,12 +221,22 @@ base-node:
 	docker build $(if $(filter true,$(force)),--no-cache) -f base/node.Dockerfile --target prod --build-arg NODE_VERSION=$(NODE_BASE_VERSION) -t jungleforge/node:$(NODE_BASE_VERSION)-prod .
 	docker build $(if $(filter true,$(force)),--no-cache) -f base/node.Dockerfile --target dev  --build-arg NODE_VERSION=$(NODE_BASE_VERSION) -t jungleforge/node:$(NODE_BASE_VERSION)-dev .
 	@echo ">> built jungleforge/node:$(NODE_BASE_VERSION)-prod and jungleforge/node:$(NODE_BASE_VERSION)-dev"
+	@$(MAKE) --no-print-directory prune-old-images
 
 # Build the shared Rust base image ONCE (Rust dev-shell projects FROM jungleforge/rust:<v>-dev).
 # Dev-only — no prod target (see base/rust.Dockerfile). Re-run when you bump the Rust version.
 base-rust:
 	docker build $(if $(filter true,$(force)),--no-cache) -f base/rust.Dockerfile --target dev --build-arg RUST_VERSION=$(RUST_BASE_VERSION) -t jungleforge/rust:$(RUST_BASE_VERSION)-dev .
 	@echo ">> built jungleforge/rust:$(RUST_BASE_VERSION)-dev"
+	@$(MAKE) --no-print-directory prune-old-images
+
+# Every image tag this control plane rebuilds (jungleforge/php:<v>-dev, <IMAGE_NAME>:dev/:latest,
+# ...) is static, so a rebuild re-tags a fresh image and demotes the previous one to dangling
+# (<none>:<none>) instead of removing it. Run after every build target to reclaim that space. Only
+# removes dangling images with no container referencing them — never touches a currently-tagged
+# or in-use image.
+prune-old-images:
+	@docker image prune -f --filter "dangling=true"
 
 # Create the shared external lion-network if it doesn't exist (idempotent, verbose).
 network:
@@ -282,6 +293,7 @@ info:
 
 _build: guard ensure-network ensure-base
 	$(COMPOSE) build $(if $(filter true,$(force)),--no-cache)
+	@$(MAKE) --no-print-directory prune-old-images
 _up: guard ensure-network ensure-base
 	$(COMPOSE) up -d
 _down: guard
