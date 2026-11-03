@@ -21,7 +21,7 @@ services_prefix=$(sed -n 's/^SERVICES_PREFIX=//p' .env 2>/dev/null | head -1)
 rows=""
 
 if [ -z "$group" ] || [ "$group" = "services" ]; then
-    for core in mariadb postgres redis rabbitmq; do
+    for core in mariadb postgres redis rabbitmq minio; do
         matches_filter "$core" || continue
         rows="$rows
 services	$core	${services_prefix}${core}"

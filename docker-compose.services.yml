@@ -1,9 +1,9 @@
 # Shared backing services for ALL projects — run ONCE:
 #   make services-up      (docker compose -p ${SERVICES_PREFIX}services -f docker-compose.services.yml up -d)
 #
-# Projects connect to these by alias (mariadb / postgres / redis / rabbitmq) over lion-network.
+# Projects connect to these by alias (mariadb / postgres / redis / rabbitmq / minio) over lion-network.
 # Credentials and ports come from jungleforge's .env. SERVICES_PREFIX is empty (unprefixed
-# "postgres"/"redis"/"rabbitmq"/"services" container/project names) unless set in .env — set it
+# "postgres"/"redis"/"rabbitmq"/"minio"/"services" container/project names) unless set in .env — set it
 # (including your own trailing separator, e.g. "myinstance-") if you run more than one instance
 # of this control plane on the same host, so the two don't collide.
 
@@ -96,6 +96,29 @@ services:
       timeout: 10s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    container_name: ${SERVICES_PREFIX}minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      lion-network:
+        aliases:
+          - minio
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   lion-network:
     name: ${NETWORK_NAME:-lion-network}
@@ -106,3 +129,4 @@ volumes:
   postgres-data:
   redis-data:
   rabbitmq-data:
+  minio-data:
