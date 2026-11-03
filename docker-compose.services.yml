@@ -77,6 +77,11 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     container_name: ${SERVICES_PREFIX}rabbitmq
+    # Fixed (not SERVICES_PREFIX-derived — that value itself can change) — RabbitMQ's Erlang node
+    # identity is rabbit@<hostname>, and its Mnesia data directory is keyed on that node name. Without
+    # a pinned hostname, Docker assigns a new one on every recreate, so RabbitMQ silently bootstraps a
+    # brand-new empty node each time instead of recovering its existing vhosts/queues/users.
+    hostname: rabbitmq
     restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
@@ -91,7 +96,10 @@ services:
         aliases:
           - rabbitmq
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # A plain TCP check on the AMQP port — rabbitmq-diagnostics ping spins up a whole extra
+      # Erlang VM just to ask the broker "are you alive?", which is expensive enough to matter
+      # on a memory-constrained host when it fires every interval, forever.
+      test: ["CMD", "nc", "-z", "127.0.0.1", "5672"]
       interval: 15s
       timeout: 10s
       retries: 5
