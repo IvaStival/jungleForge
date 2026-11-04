@@ -2,6 +2,9 @@
 #   make services-start   (docker compose -p ${SERVICES_PREFIX}services -f docker-compose.services.yml up -d)
 #
 # Projects connect to these by alias (mariadb / postgres / redis / rabbitmq / minio) over lion-network.
+# MinIO is OPTIONAL (compose profile "minio") — off unless COMPOSE_PROFILES=minio is set in .env.
+# Upstream stopped publishing minio/minio to Docker Hub, so point MINIO_IMAGE at an image you can
+# actually pull (a mirror, your own build, or an S3-compatible alternative) before enabling it.
 # Credentials and ports come from jungleforge's .env. SERVICES_PREFIX is empty (unprefixed
 # "postgres"/"redis"/"rabbitmq"/"minio"/"services" container/project names) unless set in .env — set it
 # (including your own trailing separator, e.g. "myinstance-") if you run more than one instance
@@ -11,7 +14,7 @@ name: ${SERVICES_PREFIX}services
 
 services:
   mariadb:
-    image: mariadb:11
+    image: mariadb:13
     container_name: ${SERVICES_PREFIX}mariadb
     restart: unless-stopped
     environment:
@@ -19,6 +22,8 @@ services:
       MARIADB_USER: ${MARIADB_USER:-mariadb}
       MARIADB_PASSWORD: ${MARIADB_PASSWORD:?set MARIADB_PASSWORD in .env}
       MARIADB_DATABASE: ${MARIADB_DATABASE:-mariadb}
+      # Runs mariadb-upgrade on boot when the data volume was created by an older major.
+      MARIADB_AUTO_UPGRADE: "1"
     ports:
       - "${MARIADB_PORT:-3306}:3306"
     volumes:
@@ -34,7 +39,7 @@ services:
       retries: 5
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     container_name: ${SERVICES_PREFIX}postgres
     restart: unless-stopped
     environment:
@@ -44,7 +49,10 @@ services:
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      # Postgres 18+ images keep PGDATA under /var/lib/postgresql/<major>/docker, so the volume
+      # mounts one level up. A new volume name per major: on-disk formats aren't compatible across
+      # majors, and the old postgres-data volume is left untouched for a pg_dump/restore.
+      - postgres18-data:/var/lib/postgresql
     networks:
       lion-network:
         aliases:
@@ -56,7 +64,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: ${SERVICES_PREFIX}redis
     restart: unless-stopped
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--appendonly", "yes"]
@@ -75,7 +83,7 @@ services:
       retries: 5
 
   rabbitmq:
-    image: rabbitmq:3-management-alpine
+    image: rabbitmq:4-management-alpine
     container_name: ${SERVICES_PREFIX}rabbitmq
     # Fixed (not SERVICES_PREFIX-derived — that value itself can change) — RabbitMQ's Erlang node
     # identity is rabbit@<hostname>, and its Mnesia data directory is keyed on that node name. Without
@@ -90,7 +98,9 @@ services:
       - "${RABBITMQ_PORT:-5672}:5672"
       - "${RABBITMQ_UI_PORT:-15672}:15672"
     volumes:
-      - rabbitmq-data:/var/lib/rabbitmq
+      # New volume for 4.x — a 3.x node can't be upgraded in place unless all its feature flags
+      # were enabled first; the old rabbitmq-data volume is left untouched.
+      - rabbitmq4-data:/var/lib/rabbitmq
     networks:
       lion-network:
         aliases:
@@ -105,13 +115,14 @@ services:
       retries: 5
 
   minio:
-    image: minio/minio:latest
+    image: ${MINIO_IMAGE:-minio/minio:latest}
+    profiles: ["minio"]
     container_name: ${SERVICES_PREFIX}minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-change_me}
     ports:
       - "${MINIO_API_PORT:-9000}:9000"
       - "${MINIO_CONSOLE_PORT:-9001}:9001"
@@ -134,7 +145,7 @@ networks:
 
 volumes:
   mariadb-data:
-  postgres-data:
+  postgres18-data:
   redis-data:
-  rabbitmq-data:
+  rabbitmq4-data:
   minio-data:

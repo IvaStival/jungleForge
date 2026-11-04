@@ -10,7 +10,7 @@ A **Docker control plane** for running many projects from one place, across thre
 code — it is the Makefile + compose files + shared base images + config defaults + project
 templates that drive *other* projects living elsewhere on disk. Each project runs as a
 **single self-contained container**, in `dev` (code volume-mounted, Xdebug) or `prod`
-(code/assets baked into the image). A single shared stack of MariaDB + Postgres + Redis + RabbitMQ + MinIO backs
+(code/assets baked into the image). A single shared stack of MariaDB + Postgres + Redis + RabbitMQ (+ optional MinIO) backs
 every project. See `docs/ADDING-A-STACK.md` for how the `STACK` discriminator works and what a
 new stack needs.
 
@@ -19,9 +19,9 @@ new stack needs.
 ```bash
 make base                       # build shared jungleforge/php:8.4-{fpm,dev} base (once; `make base 8.3` for another version)
 make base force=true            # rebuild the base without cache
-make services-logs              # tail the shared mariadb/postgres/redis/rabbitmq/minio stack
+make services-logs              # tail the shared mariadb/postgres/redis/rabbitmq/minio* stack
 
-# Interactive picker — services (mariadb/postgres/redis/rabbitmq/minio + BASE_SERVICE=true projects) and apps
+# Interactive picker — services (mariadb/postgres/redis/rabbitmq/minio* + BASE_SERVICE=true projects) and apps
 # (everything else), running/stopped shown. Enter toggles + advances; land on the pinned
 # "Continue" row and press Enter to execute; ctrl-a selects everything shown. env=dev default.
 make up                         # picker: everything
@@ -184,7 +184,7 @@ instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent)
   which still use their own hand-set port). `make network`/`ensure-network` create the network
   (under whatever `NETWORK_NAME` resolves to) if it doesn't exist.
 - **`SERVICES_PREFIX` (empty by default, in `.env`)** prefixes `docker-compose.services.yml`'s
-  compose project name and its mariadb/postgres/redis/rabbitmq/minio container names — unset, they're just
+  compose project name and its mariadb/postgres/redis/rabbitmq/minio* container names — unset, they're just
   `services`/`postgres`/`redis`/`rabbitmq`/`minio`. Only needs setting if running more than one instance
   of this control plane on the same host, and include your own trailing separator when you do
   (e.g. `SERVICES_PREFIX=myinstance-`).
@@ -200,7 +200,7 @@ instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent)
   compiles its own extension layer (`php-base` stage) so production images are portable for
   multi-arch push and don't depend on the locally-built base.
 - **One `fzf` picker, two groups.** `make build`/`make up`/`make down` (`scripts/pick.sh`) all
-  open the same picker: a **services** section (mariadb/postgres/redis/rabbitmq/minio + any project opted in
+  open the same picker: a **services** section (mariadb/postgres/redis/rabbitmq/minio* + any project opted in
   via `BASE_SERVICE=true` in its `deploy/.docker-env` — set that flag when a project is shared
   infra other projects depend on, e.g. a websocket bridge other projects reach over RabbitMQ, not
   a standalone app) and an **apps** section (every other registered project). The groups are a
@@ -209,7 +209,7 @@ instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent)
   row and advances to the next one, and the pinned `>>> Continue: <verb> selected` row at the
   bottom is what you land on and press Enter on to actually execute (`ctrl-a` selects everything
   currently listed). The positional word (if any) filters by substring match against the slug;
-  `group=services`/`group=apps` filters by section; both combine. All 5 core services are listed
+  `group=services`/`group=apps` filters by section; both combine. All enabled core services are listed
   under every verb, including `verb=build` — selecting one there is a no-op (pulled images, no
   build step). `verb=down` runs `stop` (not `down`) on confirmed core
   services — scoped to just the ones selected, since `down` isn't — and a real `docker compose
@@ -298,3 +298,9 @@ instead (see `docs/ADDING-A-STACK.md`, and how `rust` was added for a precedent)
   — front them with the host's system nginx/Caddy for TLS.
 - A project's own `.env` must point at the shared services: `DB_HOST=postgres`,
   `REDIS_HOST=redis`, `RABBITMQ_HOST=rabbitmq` (adjust var names to your framework's convention).
+- **\*MinIO is optional** — gated behind the `minio` compose profile, so `make services-start`
+  and the picker/`make info` skip it unless `.env` sets `COMPOSE_PROFILES=minio`. Upstream no
+  longer publishes `minio/minio` to Docker Hub; set `MINIO_IMAGE` to something pullable first.
+- **Service major bumps use new volumes** (`postgres18-data`, `rabbitmq4-data`) because those
+  on-disk formats don't upgrade in place; the old `postgres-data`/`rabbitmq-data` volumes are left
+  untouched for a manual dump/restore. MariaDB upgrades in place via `MARIADB_AUTO_UPGRADE`.

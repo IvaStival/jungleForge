@@ -1,6 +1,6 @@
 #!/bin/sh
 # Unified interactive picker for `make build`/`make up`/`make down`. Lists two groups —
-# "services" (mariadb/postgres/redis/rabbitmq/minio + any project with BASE_SERVICE=true) and "apps" (every
+# "services" (mariadb/postgres/redis/rabbitmq/minio* + any project with BASE_SERVICE=true) and "apps" (every
 # other registered project) — each annotated with live running/stopped status. Enter toggles the
 # highlighted row and advances to the next one; the pinned "Continue" row at the bottom is what you
 # land on and press Enter on to actually execute against everything toggled. ctrl-a selects
@@ -25,6 +25,11 @@ if ! command -v fzf >/dev/null 2>&1; then
 fi
 
 services_prefix=$(sed -n 's/^SERVICES_PREFIX=//p' .env 2>/dev/null | head -1)
+# MinIO is opt-in (compose profile "minio") — only listed when COMPOSE_PROFILES in .env enables it.
+core_services="mariadb postgres redis rabbitmq"
+case ",$(sed -n 's/^COMPOSE_PROFILES=//p' .env 2>/dev/null | head -1 | tr -d ' \"')," in
+    *,minio,*) core_services="$core_services minio" ;;
+esac
 SERVICES_COMPOSE="docker compose -p ${services_prefix}services -f docker-compose.services.yml"
 
 # Green for running, red for stopped — fzf renders these via --ansi. Color codes only wrap the
@@ -57,7 +62,7 @@ apps_items=""
 
 # Core services always listed, all three verbs — build simply has nothing to do for them
 # (pulled images, no build step) and silently skips any that get selected there anyway.
-for core in mariadb postgres redis rabbitmq minio; do
+for core in $core_services; do
     matches_filter "$core" || continue
     status=$(status_for_container "${services_prefix}${core}")
     line=$(printf '%-24s %s' "$core" "$(colorize_status "$status")")
