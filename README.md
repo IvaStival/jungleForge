@@ -1,7 +1,7 @@
 # JungleForge
 
 A small **Docker control plane** for running many backend + frontend projects from one place —
-PHP/Laravel, FrankenPHP (e.g. Symfony), and Node/Vite — sharing one MariaDB + Postgres + Redis + RabbitMQ + MinIO
+PHP/Laravel, FrankenPHP (e.g. Symfony), and Node/Vite — sharing one MariaDB + Postgres + Redis + RabbitMQ (+ optional MinIO)
 stack.
 
 One `make` command spins up any registered project as a **single self-contained container**, in
@@ -20,7 +20,7 @@ projects, and pull engine updates whenever you want — see
 git clone <your-fork-url> jungleforge && cd jungleforge
 cp .env.example .env
 make base                                              # build the shared PHP base image (once)
-make up group=services                                 # picker: mariadb + postgres + redis + rabbitmq + minio —
+make up group=services                                 # picker: mariadb + postgres + redis + rabbitmq (+ minio, if enabled) —
                                                         # ctrl-a to select all, Continue + Enter
 echo 'DEMO_API_PATH='"$PWD"'/examples/demo-api' >> .env
 make up demo-api                                       # picker filtered to "demo-api" — Enter, Enter
@@ -121,7 +121,7 @@ want them, with nothing of yours in the way.
 cp .env.example .env          # then edit: register projects + set service credentials
 make base                     # build the shared PHP base image (once; `make base 8.3` for 8.3,
                                # `make base force=true` to rebuild without cache)
-make up group=services        # picker: mariadb + postgres + redis + rabbitmq + minio (+ any project with
+make up group=services        # picker: mariadb + postgres + redis + rabbitmq (+ minio, if enabled) (+ any project with
                                # BASE_SERVICE=true) — ctrl-a to select all, then Continue + Enter
 ```
 
@@ -201,15 +201,19 @@ make down                      # same picker; confirmed core services get `stop`
 ```
 
 `make build`/`make up`/`make down` (`scripts/pick.sh`) all open the same picker: a **services**
-section (mariadb/postgres/redis/rabbitmq/minio + any project with `BASE_SERVICE=true`) and an **apps** section
+section (mariadb/postgres/redis/rabbitmq/minio* + any project with `BASE_SERVICE=true`) and an **apps** section
 (everything else registered), both showing live running/stopped status. Nothing starts
 pre-selected. **Enter** toggles the highlighted row and advances to the next one; a pinned
 `>>> Continue: <verb> selected` row is what you land on and press Enter on to execute against
 everything toggled (`ctrl-a` selects everything listed). The positional word (if given) filters
 by substring match; `group=services`/`group=apps` filters by section — both combine.
-All 5 core services are listed under every verb, including `verb=build` — selecting one there is
+All enabled core services are listed under every verb, including `verb=build` — selecting one there is
 a no-op (no build step); `verb=down` runs `stop` (not `down`) on confirmed core services and a
 real `down` on confirmed apps.
+
+\*MinIO is optional: it's behind the `minio` compose profile and only started/listed when `.env`
+sets `COMPOSE_PROFILES=minio`. `minio/minio` is no longer on Docker Hub, so set `MINIO_IMAGE` to an
+image you can pull before enabling it.
 
 `make info` (`scripts/info.sh`) prints a read-only table — status, image, ports — for the same
 services+apps set, with the same `filter`/`group=` semantics but no `fzf` and no action taken:

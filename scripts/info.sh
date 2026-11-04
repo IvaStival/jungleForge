@@ -16,12 +16,17 @@ matches_filter() {
 }
 
 services_prefix=$(sed -n 's/^SERVICES_PREFIX=//p' .env 2>/dev/null | head -1)
+# MinIO is opt-in (compose profile "minio") — only listed when COMPOSE_PROFILES in .env enables it.
+core_services="mariadb postgres redis rabbitmq"
+case ",$(sed -n 's/^COMPOSE_PROFILES=//p' .env 2>/dev/null | head -1 | tr -d ' \"')," in
+    *,minio,*) core_services="$core_services minio" ;;
+esac
 
 # rows: group<TAB>slug<TAB>container_name
 rows=""
 
 if [ -z "$group" ] || [ "$group" = "services" ]; then
-    for core in mariadb postgres redis rabbitmq minio; do
+    for core in $core_services; do
         matches_filter "$core" || continue
         rows="$rows
 services	$core	${services_prefix}${core}"
